@@ -66,11 +66,11 @@ using namespace Dyninst::SymtabAPI;
 
 // Need REG_MT_POS, defined in inst-<arch>...
 
-#if defined(arch_x86) || defined(arch_x86_64)
+#if defined(DYNINST_HOST_ARCH_X86) || defined(DYNINST_HOST_ARCH_X86_64)
 #include "inst-x86.h"
-#elif defined(arch_power)
+#elif defined(DYNINST_HOST_ARCH_POWER)
 #include "inst-power.h"
-#elif defined(arch_aarch64)
+#elif defined(DYNINST_HOST_ARCH_AARCH64)
 #include "inst-aarch64.h"
 #else
 #error "Unknown architecture, expected x86, x86_64, power or aarch64"
@@ -876,8 +876,7 @@ BPatch_registerExpr::BPatch_registerExpr(BPatch_register reg)
 }
 
 BPatch_registerExpr::BPatch_registerExpr(Dyninst::MachRegister mach) {
-   bool whocares;
-   Register reg = convertRegID(mach, whocares);
+   Register reg = convertRegID(mach);
    ast_wrapper = AstNodePtr(AstNode::operandNode(AstNode::operandType::origRegister,
                                                  (void *)(intptr_t)reg));
     assert(BPatch::bpatch != NULL);
@@ -1167,8 +1166,7 @@ BPatch_variableExpr::BPatch_variableExpr(BPatch_addressSpace *in_addSpace,
                 AstNodePtr variableAst;
                 BPatch_storageClass in_storage = lv->convertToBPatchStorage(& locs[i]);
                 void *in_address = (void *) locs[i].frameOffset;
-                bool ignored;
-                int in_register = convertRegID(locs[i].mr_reg, ignored);
+                int in_register = convertRegID(locs[i].mr_reg);
                 switch (in_storage) {
                         case BPatch_storageAddr:
                                 variableAst = AstNode::operandNode(AstNode::operandType::DataAddr, in_address);

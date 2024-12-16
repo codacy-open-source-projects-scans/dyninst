@@ -31,6 +31,25 @@ pointing to machine language, using the InstructionDecoder class.  See
 InstructionDecoder for more details. 
 
 \begin{apient}
+enum InsnCategory {
+  c_CallInsn,          // procedure call (NOT system calls)
+  c_ReturnInsn,        // procedure return
+  c_BranchInsn,        // conditional, direct, and indirect jump/branch
+  c_ConditionalInsn,   // implicitly reads condition/status flags
+  c_CompareInsn,       // comparisons (includes vector comparisons)
+  c_PrefetchInsn,      // cache prefetch
+  c_SysEnterInsn,      // x86 sysenter
+  c_SyscallInsn,       // system call
+  c_InterruptInsn,     // software interrupt
+  c_VectorInsn,        // operates on more than one value simultaneously
+  c_GPUKernelExitInsn, // AMD GPU kernel exit
+  c_TransactionalInsn, // memory transaction (fences, hardware locks, etc.)
+  c_NoCategory
+}
+\end{apient}
+
+
+\begin{apient}
 Instruction (Operation::Ptr what, 
              size_t size,
              const unsigned char * raw,
@@ -63,13 +82,54 @@ const Operation & getOperation() const
 }
 
 \begin{apient}
+std::vector<Operand> getAllOperands() const
+\end{apient}
+\apidesc{
+Returns the operands in the order that they were decoded.
+
+For the instruction \code{add rax, rcx}, the operands are \code{rax},
+\code{rcx}, and \code{EFLAGS}. \code{EFLAGS} is included because it
+is implicitly modified to update the overflow and carry flags.   
+}
+
+\begin{apient}
+std::vector<Operand> getImplicitOperands() const
+\end{apient}
+\apidesc{
+Returns the *implicit* operands in the order that they were decoded.
+
+For the instruction \code{add rax, rcx}, the implicit operand is
+\code{EFLAGS} because it is implicitly modified to update the
+overflow and carry flags.
+}
+
+\begin{apient}
+std::vector<Operand> getExplicitOperands() const
+\end{apient}
+\apidesc{
+Returns the *explicit* operands in the order that they were decoded.
+
+For the instruction \code{add rax, rcx}, the explitic operands are \code{rax}
+and \code{rcx}. \code{EFLAGS} is not included because it is *implicitly*
+modified to update the overflow and carry flags.
+}
+
+\begin{apient}
 void getOperands(std::vector<Operand> & operands) const
 \end{apient}
 \apidesc{
-The vector operands has the instruction's operands appended to it in the same
-order that they
-were decoded.
+DEPRECATED
+
+Use `getAllOperands()`.
 }
+
+\begin{apient}
+std::vector<Operand> getDisplayOrderedOperands() const
+\end{apient}
+\apidesc{
+  Returns a vector of non-implicit operands in printed order.
+}
+
 
 \begin{apient}
 Operand getOperand(int index) const
@@ -158,8 +218,7 @@ bool isWritten(Expression::Ptr candidate) const
 bool readsMemory() const
 \end{apient}
 \apidesc{
-    Returns \code{true} if the instruction reads at least one memory address as
-    data.
+    Returns \code{true} if the instruction reads from at least one memory address.
 
     If any operand containing a \code{Dereference} object is read, the
     instruction reads the memory at that address. Also, on platforms where a
@@ -171,8 +230,7 @@ bool readsMemory() const
 bool writesMemory() const
 \end{apient}
 \apidesc{
-    Returns \code{true} if the instruction writes at least one memory address as
-    data.
+    Returns \code{true} if the instruction writes to at least one memory address.
 
     If any operand containing a \code{Dereference} object is write, the
     instruction writes the memory at that address. Also, on platforms where a

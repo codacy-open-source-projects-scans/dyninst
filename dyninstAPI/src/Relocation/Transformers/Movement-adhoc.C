@@ -289,14 +289,8 @@ bool adhocMovementTransformer::isPCRelData(Widget::Ptr ptr,
                                            Instruction insn,
                                            Address &target) {
   target = 0;
-  switch(insn.getCategory())
-  {
-      case c_CallInsn:
-      case c_BranchInsn:
-      case c_ReturnInsn:
-          return false;
-      default:
-	  break;
+  if(insn.isCall() || insn.isBranch() || insn.isReturn()) {
+    return false;
   }
   if (insn.getControlFlowTarget()) return false;
 
@@ -329,8 +323,7 @@ bool adhocMovementTransformer::isPCRelData(Widget::Ptr ptr,
   // Didn't use the PC to read memory; thus we have to grind through
   // all the operands. We didn't do this directly because the 
   // memory-topping deref stops eval...
-  vector<Operand> operands;
-  insn.getOperands(operands);
+  auto operands = insn.getAllOperands();
   for (vector<Operand>::iterator iter = operands.begin();
        iter != operands.end(); ++iter) {
     // If we can bind the PC, then we're in the operand
@@ -411,7 +404,7 @@ bool adhocMovementTransformer::isGetPC(Widget::Ptr ptr,
   // Check for call to thunk.
   // TODO: need a return register parameter.
 
-   if (insn.getCategory() != InstructionAPI::c_CallInsn) return false;
+   if (!insn.isCall()) return false;
 
   // Okay: checking for call + size
   Expression::Ptr CFT = insn.getControlFlowTarget();
@@ -479,7 +472,7 @@ bool adhocMovementTransformer::isGetPC(Widget::Ptr ptr,
 
     if(firstInsn.isValid() && firstInsn.getOperation().getID() == e_mov
        && firstInsn.readsMemory() && !firstInsn.writesMemory()
-       && secondInsn.isValid() && secondInsn.getCategory() == c_ReturnInsn) {
+       && secondInsn.isValid() && secondInsn.isReturn()) {
 
       thunkVisitor visitor;
       relocation_cerr << "Checking operand "

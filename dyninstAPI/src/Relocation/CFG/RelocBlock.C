@@ -317,9 +317,7 @@ void RelocBlock::createCFWidget() {
 
    InstructionAPI::Instruction insn = elements_.back()->insn();
    if (insn.isValid()) {
-      if (insn.getCategory() == c_CallInsn ||
-          insn.getCategory() == c_ReturnInsn ||
-          insn.getCategory() == c_BranchInsn) {
+      if (insn.isCall() || insn.isReturn() || insn.isBranch()) {
          hasCF = true;
       }
    }
@@ -345,7 +343,7 @@ void RelocBlock::createCFWidget() {
 // to preserve that gap if it exists, and to make life easy we bundle
 // it into the CFWidget.
 
-#if defined(arch_x86) || defined(arch_x86_64)
+#if defined(DYNINST_HOST_ARCH_X86) || defined(DYNINST_HOST_ARCH_X86_64)
 #define DEFENSIVE_GAP_SIZE 10
 #else
 #define DEFENSIVE_GAP_SIZE 12

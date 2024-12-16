@@ -249,8 +249,7 @@ static Address ThunkAdjustment(Address afterThunk, MachRegister reg, ParseAPI::B
     Instruction nextInsn = dec.decode();
     // It has to be an add
     if (nextInsn.getOperation().getID() != e_add) return 0;
-    vector<Operand> operands;
-    nextInsn.getOperands(operands);
+    auto operands = nextInsn.getAllOperands();
     RegisterAST::Ptr regAST = boost::dynamic_pointer_cast<RegisterAST>(operands[0].getValue());
     // The first operand should be a register
     if (regAST == 0) return 0;
@@ -278,7 +277,7 @@ void IndirectControlFlowAnalyzer::FindAllThunks() {
 	InsnAdapter::IA_IAPI* insnBlock = InsnAdapter::IA_IAPI::makePlatformIA_IAPI(b->obj()->cs()->getArch(), dec, b->start(), b->obj() , b->region(), b->obj()->cs(), b);
 	Address cur = b->start();
 	while (cur < b->end()) {
-        if (insnBlock->getInstruction().getCategory() == c_CallInsn && insnBlock->isThunk()) {
+        if (insnBlock->getInstruction().isCall() && insnBlock->isThunk()) {
             bool valid;
             Address addr;
             boost::tie(valid, addr) = insnBlock->getCFT();
@@ -365,8 +364,7 @@ int IndirectControlFlowAnalyzer::GetMemoryReadSize(Assignment::Ptr memLoc) {
         return 0;
     }
     Instruction i = memLoc->insn();
-    std::vector<Operand> ops;
-    i.getOperands(ops);
+    auto ops = i.getAllOperands();
     parsing_printf("\t there are %lu operands\n", ops.size());
     for (auto oit = ops.begin(); oit != ops.end(); ++oit) {
         Operand o = *oit;

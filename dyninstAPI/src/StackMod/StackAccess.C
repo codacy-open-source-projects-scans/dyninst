@@ -100,8 +100,7 @@ bool isDebugType(StackAccess::StackAccessType t)
 
 int getAccessSize(InstructionAPI::Instruction insn)
 {
-    std::vector<InstructionAPI::Operand> operands;
-    insn.getOperands(operands);
+    auto operands = insn.getAllOperands();
     int accessSize = 0;
     for (unsigned i = 0; i < operands.size(); i++) {
         InstructionAPI::Expression::Ptr value = operands[i].getValue();
@@ -118,7 +117,7 @@ int getAccessSize(InstructionAPI::Instruction insn)
 
 // FreeBSD is missing a MINLONG and MAXLONG
 #if defined(os_freebsd)
-#if defined(arch_64bit)
+#if defined(DYNINST_HOST_ARCH_64BIT)
 #define MINLONG INT64_MIN
 #define MAXLONG INT64_MAX
 #else
@@ -287,7 +286,7 @@ bool getAccesses(ParseAPI::Function *func,
     // If this instruction is a call, check if any stack pointers are possibly
     // being passed as parameters.  If so, we don't know what the callee will
     // access through that pointer and need to return false.
-    if (insn.getCategory() == InstructionAPI::c_CallInsn) {
+    if (insn.isCall()) {
         // Check parameter registers for stack pointers
         ABI *abi = ABI::getABI(word_size);
         const bitArray &callParamRegs = abi->getParameterRegisters();
@@ -620,8 +619,7 @@ bool getMemoryOffset(ParseAPI::Function *func,
     InstructionAPI::RegisterAST* regAST = new InstructionAPI::RegisterAST(reg);
     InstructionAPI::RegisterAST::Ptr regASTPtr = InstructionAPI::RegisterAST::Ptr(regAST);
 
-    std::vector<InstructionAPI::Operand> operands;
-    insn.getOperands(operands);
+    auto operands = insn.getAllOperands();
 
     signed long disp = 0;  // Stack height of access
     signed long offset = 0;  // Offset from the base register used in the access
