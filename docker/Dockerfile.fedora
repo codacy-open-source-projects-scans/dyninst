@@ -1,0 +1,35 @@
+ARG version
+FROM fedora:${version}
+
+#####################################################
+#
+# Base container for a Fedora environment
+#
+#   The dependencies are purposefully unversioned
+#   so that the distribution-default ones are used.
+#
+#####################################################
+
+LABEL maintainer="@hainest"
+
+ENV TZ=America/Chicago
+
+RUN yum install -y     \
+      binutils-devel   \
+      boost-devel      \
+      clang            \
+      cmake            \
+      libdwarf-devel   \
+      elfutils-devel   \
+      gcc              \
+      g++              \
+      git              \
+      glibc-static     \
+      libomp           \
+      libstdc++-static \
+      tbb-devel
+
+COPY docker/build_peparse.sh /
+
+RUN bash build_peparse.sh
+

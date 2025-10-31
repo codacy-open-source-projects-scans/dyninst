@@ -1,0 +1,135 @@
+name: Compiler multibuild
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'  # 3AM on Monday
+  workflow_dispatch:
+
+jobs:
+
+  get-build-types:
+    runs-on: ubuntu-latest
+    outputs:
+      all:  ${{ steps.build-type.outputs.all }}
+    steps:
+      - name: Checkout Dyninst
+        uses: actions/checkout@v4
+
+      - id: build-type
+        uses: ./.github/actions/build-types
+
+  get-oses:
+    runs-on: ubuntu-latest
+    outputs:
+      all: ${{ steps.all.outputs.all }}
+      latest: ${{ steps.all.outputs.latest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - id: all
+        uses: ./.github/actions/os-versions
+
+  get-build-configs:
+    runs-on: ubuntu-latest
+    needs: get-build-types
+    outputs:
+      matrix: ${{ steps.configs.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - id: configs
+        shell: bash
+        run: |
+          set -ex
+          script="./.github/scripts/compiler_configs.py"
+          python3 ${script} --types '${{ needs.get-build-types.outputs.all }}' >> $GITHUB_OUTPUT
+
+  get-compilers:
+    runs-on: ubuntu-latest
+    outputs:
+      all: ${{ steps.compilers.outputs.value }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - id: compilers
+        shell: bash
+        run: |
+          set -ex
+          script="./.github/scripts/compiler_configs.py"
+          names=$(python3 ${script} --print-names)
+          echo "value=${names}" >> $GITHUB_OUTPUT
+
+
+#############################################################################
+#
+#  Build with all supported compilers and CMAKE_BUILD_TYPEs
+#
+  compiler-multibuild:
+    needs: [get-build-configs]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.get-build-configs.outputs.matrix) }}
+    permissions:
+      packages: read
+    container:
+      image: ghcr.io/dyninst/amd64/${{ matrix.os }}-base:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.github_token }}
+    name: ${{ matrix.os }}, ${{ matrix.compiler }}-${{ matrix.compiler-version }}, ${{ matrix.build-type }}
+    steps:
+      - name: Checkout Dyninst
+        uses: actions/checkout@v4
+        with:
+          path: "src"  # relative to $GITHUB_WORKSPACE
+
+      - name: Build Ubuntu
+        uses: ./src/.github/actions/build
+        with:
+          os: ${{ matrix.os }}
+          compiler: ${{ matrix.compiler }}
+          compiler-version: ${{ matrix.compiler-version }}
+          build-type: ${{ matrix.build-type }}
+          src-dir: "${GITHUB_WORKSPACE}/src"
+
+######################################################################################
+#
+#  Build with C++11 to C++23 using the latest distributions
+#
+#  This doesn't test every possible os/compiler/std, but it makes sure Dyninst builds
+#  on -some- compiler for each standard version.
+
+  cxx-standards:
+    runs-on: ubuntu-latest
+    needs: [get-oses, get-compilers]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJson(needs.get-oses.outputs.latest) }}
+        compiler: ${{ fromJson(needs.get-compilers.outputs.all)}}
+        std: [11, 14, 17, 20, 23, 26]
+    permissions:
+      packages: read
+    container:
+      image: ghcr.io/dyninst/amd64/${{ matrix.os }}-base:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.github_token }}
+    name: ${{ matrix.os }}, ${{ matrix.compiler }}, std=${{ matrix.std }}
+    steps:
+      - name: Checkout Dyninst
+        uses: actions/checkout@v4
+        with:
+          path: "src"    # Relative to $GITHUB_WORKSPACE
+
+      - name: Build
+        uses: ./src/.github/actions/build
+        with:
+          os: ${{ matrix.os }}
+          compiler: ${{ matrix.compiler }}
+          src-dir: "${GITHUB_WORKSPACE}/src"
+          extra-cmake-flags: "-DDYNINST_CXX_LANGUAGE_STANDARD=${{ matrix.std }}"

@@ -1,0 +1,77 @@
+ARG version
+FROM ubuntu:${version}
+
+ARG build_elfutils="no"
+ARG build_jobs=1
+
+#####################################################
+#
+# Base container for an Ubuntu environment
+#
+#   The dependencies are purposefully unversioned
+#   so that the distribution-default ones are used.
+#
+#   If the distro's elfutils is too old, it can be
+#   built by using `--build-arg build_elfutils=yes`.
+#
+#####################################################
+
+LABEL maintainer="@hainest"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=America/Chicago
+
+RUN apt-get -qq update && \
+    apt-get -qq install -y --no-install-recommends \
+      libboost-atomic-dev     \
+      libboost-chrono-dev     \
+      libboost-date-time-dev  \
+      libboost-filesystem-dev \
+      libboost-thread-dev     \
+      libboost-timer-dev      \
+      build-essential         \
+      bzip2                   \
+      ca-certificates         \
+      libc-dev                \
+      clang                   \
+      cmake                   \
+      g++                     \
+      git                     \
+      libiberty-dev           \
+      libomp-dev              \
+      pkg-config              \
+      libtbb-dev
+      
+
+COPY docker/dependencies.versions docker/build_peparse.sh /
+
+RUN <<EOD bash
+  set -ex
+  
+  # Build pe-parse
+  bash build_peparse.sh
+  
+  # Build elfutils
+  if test "${build_elfutils}" = "no"; then
+
+    # Use the distro-provided one
+    apt install -qq -y --no-install-recommends elfutils libelf-dev libdw-dev libdebuginfod-dev
+
+  else
+
+    # Build minimum required version from source
+    apt install -qq -y --no-install-recommends libcurl4-openssl-dev wget libzstd-dev libbz2-dev liblzma-dev zlib1g-dev m4
+    version=$(grep elfutils dependencies.versions | awk '{split($0,a,":"); print a[2]}')
+    wget --no-check-certificate https://sourceware.org/elfutils/ftp/\${version}/elfutils-\${version}.tar.bz2
+    bunzip2 elfutils-\${version}.tar.bz2
+    tar -xf elfutils-\${version}.tar
+    cd elfutils-\${version}/
+    mkdir build
+    cd build
+    ../configure --enable-libdebuginfod --disable-debuginfod --prefix=/usr
+    make -j ${build_jobs}
+    make install
+    cd /
+    rm -rf elfutils-\${version}/ elfutils-\${version}.tar
+  fi
+EOD
