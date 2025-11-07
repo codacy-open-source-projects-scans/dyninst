@@ -47,13 +47,7 @@ namespace Dyninst { namespace InstructionAPI {
 
   Immediate::~Immediate() {}
 
-  void Immediate::getChildren(vector<InstructionAST::Ptr>&) const { return; }
-
-  void Immediate::getChildren(vector<Expression::Ptr>&) const { return; }
-
-  bool Immediate::isUsed(InstructionAST::Ptr findMe) const { return *findMe == *this; }
-
-  void Immediate::getUses(std::set<InstructionAST::Ptr>&) { return; }
+  bool Immediate::isUsed(Expression::Ptr findMe) const { return *findMe == *this; }
 
   std::string Immediate::format(Architecture arch, formatStyle) const {
     return ArchSpecificFormatter::getFormatter(arch).formatImmediate(eval().format());
@@ -61,7 +55,7 @@ namespace Dyninst { namespace InstructionAPI {
 
   std::string Immediate::format(formatStyle) const { return eval().format(); }
 
-  bool Immediate::isStrictEqual(const InstructionAST& rhs) const { return (rhs.eval() == eval()); }
+  bool Immediate::isStrictEqual(const Expression& rhs) const { return (rhs.eval() == eval()); }
 
   void Immediate::apply(Visitor* v) { v->visit(this); }
 

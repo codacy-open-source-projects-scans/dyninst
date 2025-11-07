@@ -302,12 +302,7 @@ BinaryEdit *BinaryEdit::openFile(const std::string &file,
         return NULL;
     }
     
-    fileDescriptor desc;
-    if (!getStatFileDescriptor(file, desc)) {
-        startup_printf("%s[%d]: failed to create file descriptor for %s!\n",
-                       FILE__, __LINE__, file.c_str());
-        return NULL;
-    }
+    fileDescriptor desc(file, 0, 0);
     
     // Open the mapped object as an archive member
     if( !member.empty() ) {
@@ -315,10 +310,6 @@ BinaryEdit *BinaryEdit::openFile(const std::string &file,
     }
 
     BinaryEdit *newBinaryEdit = new BinaryEdit();
-    if (!newBinaryEdit) {
-        startup_printf("%s[%d]: failed to create binary representation for %s!\n",
-                       FILE__, __LINE__, file.c_str());
-    }
 
     newBinaryEdit->mobj = mapped_object::createMappedObject(desc, newBinaryEdit);
     if (!newBinaryEdit->mobj) {
@@ -379,13 +370,6 @@ bool BinaryEdit::archSpecificMultithreadCapable() {
     return false;
 }
 #endif
-
-bool BinaryEdit::getStatFileDescriptor(const std::string &name, fileDescriptor &desc) {
-   desc = fileDescriptor(name.c_str(),
-                         0, // code base address
-                         0); // data base address
-   return true;
-}
 
 #if !defined(os_linux) && !defined(os_freebsd)
 mapped_object *BinaryEdit::openResolvedLibraryName(std::string filename, std::map<std::string, BinaryEdit *> &allOpened) {
@@ -492,7 +476,6 @@ bool BinaryEdit::writeFile(const std::string &newFileName)
          }
       }
 
-   delayRelocation_ = false;
       relocate();
       
       vector<Region*> oldSegs;

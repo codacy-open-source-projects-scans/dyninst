@@ -30,7 +30,8 @@
 
 // $Id: linux-x86.h,v 1.7 2007/12/14 04:16:48 jaw Exp $
 
-#if !defined(i386_unknown_linux2_0) \
+#if !defined(os_linux) \
+ && !defined(i386_unknown_linux2_0) \
  && !defined(x86_64_unknown_linux2_4) /* Blind duplication - Ray */ 
 #error "invalid architecture-os inclusion"
 #endif
@@ -40,5 +41,21 @@
 
 #include "inst-x86.h"
 #include "codegen.h"
+
+/* addresses on x86 don't have to be aligned */
+/* Address bounds of new dynamic heap segments.  On x86 we don't try
+to allocate new segments near base tramps, so heap segments can be
+allocated anywhere (the tramp address "x" is ignored). */
+inline Dyninst::Address region_lo(const Dyninst::Address /*x*/) { return 0x00000000; }
+inline Dyninst::Address region_hi(const Dyninst::Address /*x*/) { return 0xf0000000; }
+
+#if defined(DYNINST_HOST_ARCH_X86_64) || defined(DYNINST_CODEGEN_ARCH_X86_64)
+// range functions for AMD64
+
+inline Dyninst::Address region_lo_64(const Dyninst::Address x) { return x & 0xffffffff80000000; }
+inline Dyninst::Address region_hi_64(const Dyninst::Address x) { return x | 0x000000007fffffff; }
+
+#endif
+
 
 #endif

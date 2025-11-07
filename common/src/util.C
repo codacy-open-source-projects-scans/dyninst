@@ -41,81 +41,6 @@ using namespace std;
 
 namespace Dyninst {
 
-DYNINST_EXPORT unsigned addrHashCommon(const Address &addr)
-{
-   // inspired by hashs of string class
-
-   unsigned result = 5381;
-
-   Address accumulator = addr;
-   while (accumulator > 0) {
-      // We use 3 bits at a time from the address
-      result = (result << 4) + result + (accumulator & 0x07);
-      accumulator >>= 3;
-   }
-
-   return result;
-}
-
-DYNINST_EXPORT unsigned addrHash(const Address & iaddr)
-{
-   return Dyninst::addrHashCommon(iaddr);
-}
-
-DYNINST_EXPORT unsigned ptrHash(const void * iaddr)
-{
-   return Dyninst::addrHashCommon((Address)iaddr);
-}
-
-DYNINST_EXPORT unsigned ptrHash(void * iaddr)
-{
-   return Dyninst::addrHashCommon((Address)iaddr);
-}
-
-DYNINST_EXPORT unsigned addrHash4(const Address &iaddr)
-{
-   // call when you know that the low 2 bits are 0 (meaning they contribute
-   // nothing to an even hash distribution)
-   return Dyninst::addrHashCommon(iaddr >> 2);
-}
-
-DYNINST_EXPORT unsigned addrHash16(const Address &iaddr)
-{
-   // call when you know that the low 4 bits are 0 (meaning they contribute
-   // nothing to an even hash distribution)
-   return Dyninst::addrHashCommon(iaddr >> 4);
-}
-
-// string hash grabbed from pdstring
-unsigned stringhash(const std::string &s)
-{
-   const char *str = s.c_str();
-   if (!str)
-      return 1; // 0 is reserved for unhashed key
-
-   unsigned h = 5381;
-   while (*str) {
-      h = (h << 5) + h + (unsigned) (*str);
-      str++;
-   }
-   return h==0 ? 1 : h; // 0 is reserved for unhashed key
-}
-
-std::string itos(int in)
-{
-  char buf[16];
-  snprintf(buf, 16, "%d", in);
-  return std::string(buf);
-}
-
-std::string utos(unsigned in)
-{
-  char buf[16];
-  snprintf(buf, 16, "%u", in);
-  return std::string(buf);
-}
-
-
 // This function will match string s against pattern p.
 // Asterisks match 0 or more wild characters, and a question
 // mark matches exactly one wild character.  In other words,
@@ -183,45 +108,6 @@ bool wildcardEquiv(const std::string &us, const std::string &them, bool checkCas
       return true;
    else
       return pattern_match( us.c_str(), them.c_str(), checkCase );
-}
-
-
-const char *platform_string()
-{
-	const char *plat_str = getenv("PLATFORM");
-	if (plat_str)
-		return plat_str;
-
-#if defined(DYNINST_HOST_ARCH_X86)
-#if defined (os_linux)
-	return "i386-unknown-linux2.4";
-#elif defined (os_windows)
-	return "i386-unknown-nt4.0";
-#endif
-#elif defined(DYNINST_HOST_ARCH_X86_64)
-#if defined (os_linux)
-	return "x86_64-unknown-linux2.4";
-#elif defined (os_windows)
-	return "x86_64-unknown-nt4.0";
-#endif
-#elif defined(DYNINST_HOST_ARCH_POWER)
-#if defined (os_linux)
-#if defined(DYNINST_HOST_ARCH_64BIT)
-	return "ppc64_linux";
-#endif
-#endif
-#endif
-	return "bad_platform";
-}
-
-
-//SymElf code is exclusively linked in each component, but we still want to share
-//the cache information.  Thus the cache will live in libcommon.
-class SymElf;
-
-DYNINST_EXPORT map<string, SymElf *> *getSymelfCache() {
-   static map<string, SymElf *> elfmap;
-   return &elfmap;
 }
 
 } // namespace Dyninst

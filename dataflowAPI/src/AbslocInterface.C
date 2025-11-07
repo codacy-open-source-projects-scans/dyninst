@@ -41,6 +41,7 @@
 #include "Dereference.h"
 #include "BinaryFunction.h"
 #include "Immediate.h"
+#include "InstructionAST.h"
 
 #include "dataflowAPI/h/stackanalysis.h"
 #include "parseAPI/h/CFG.h"
@@ -58,25 +59,8 @@ void AbsRegionConverter::convertAll(InstructionAPI::Expression::Ptr expr,
 				    ParseAPI::Function *func,
                                     ParseAPI::Block *block,
 				    std::vector<AbsRegion> &regions) {
-  // If we're a memory dereference, then convert us and all
-  // used registers.
-  if (boost::dynamic_pointer_cast<Dereference>(expr)) {
-    std::vector<Expression::Ptr> tmp;
-    // Strip dereference...
-    expr->getChildren(tmp);
-    for (std::vector<Expression::Ptr>::const_iterator i = tmp.begin();
-	 i != tmp.end(); ++i) {
-       regions.push_back(convert(*i, addr, func, block));
-    }
-  }
-  
-  // Otherwise just convert registers
-  
-  std::set<InstructionAST::Ptr> used;
-  expr->getUses(used);
-  for (std::set<InstructionAST::Ptr>::const_iterator j = used.begin();
-       j != used.end(); ++j) {
-    regions.push_back(convert(boost::dynamic_pointer_cast<RegisterAST>(*j)));
+  for(auto reg : getUsedRegisters(expr)) {
+    regions.push_back(convert(reg, addr, func, block));
   }
 }
 
@@ -98,7 +82,7 @@ void AbsRegionConverter::convertAll(const InstructionAPI::Instruction &insn,
             MachRegister machReg = (*i)->getID();
             std::vector<MachRegister> flagRegs = {aarch64::n, aarch64::z, aarch64::c, aarch64::v};
 
-            if((machReg & 0xFF) == (aarch64::pstate & 0xFF) && (machReg & 0xFF0000) == (aarch64::SPR)) {
+            if(machReg == aarch64::nzcv) {
                 for(std::vector<MachRegister>::iterator itr = flagRegs.begin(); itr != flagRegs.end(); itr++) {
                     used.push_back(AbsRegionConverter::convert(RegisterAST::Ptr(new RegisterAST(*itr))));
                 }
@@ -130,7 +114,7 @@ void AbsRegionConverter::convertAll(const InstructionAPI::Instruction &insn,
             MachRegister machReg = (*i)->getID();
             std::vector<MachRegister> flagRegs = {aarch64::n, aarch64::z, aarch64::c, aarch64::v};
 
-            if((machReg & 0xFF) == (aarch64::pstate & 0xFF) && (machReg & 0xFF0000) == (aarch64::SPR)) {
+            if(machReg == aarch64::nzcv) {
                 for(std::vector<MachRegister>::iterator itr = flagRegs.begin(); itr != flagRegs.end(); itr++) {
                     defined.push_back(AbsRegionConverter::convert(RegisterAST::Ptr(new RegisterAST(*itr))));
                 }
@@ -174,14 +158,21 @@ void AbsRegionConverter::convertAll(const InstructionAPI::Instruction &insn,
 }
 
 AbsRegion AbsRegionConverter::convert(RegisterAST::Ptr reg) {
-  // We do not distinguish partial registers from full register.
-  // So, eax and rax are treated the same.
-  // But for flags, we want to separate CF, ZF, and so on
-  if (reg->getID().isFlag()) {
-    return AbsRegion(Absloc(reg->getID()));
-  } else {
+  /*
+   *  We do not distinguish partial registers from full register on x86, but
+   *  we _do_ on other platforms.
+   *
+   *  For example, eax and rax are treated the same, but the FLAG register
+   *  is separated into CF, ZF, etc.
+   */
+  auto const machReg = reg->getID();
+  auto const is_x86 = (machReg.getArchitecture() == Dyninst::Arch_x86);
+  auto const is_x86_64 = (machReg.getArchitecture() == Dyninst::Arch_x86_64);
+
+  if((is_x86 || is_x86_64) && !reg->getID().isFlag()) {
     return AbsRegion(Absloc(reg->getID().getBaseRegister()));
-  }		   
+  }
+  return AbsRegion(Absloc(reg->getID()));
 }
 
 AbsRegion AbsRegionConverter::convertPredicatedRegister(RegisterAST::Ptr r, RegisterAST::Ptr p, bool c) {

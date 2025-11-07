@@ -26,6 +26,7 @@ set(_public_headers
     h/mnemonics/aarch64_entryIDs.h
     h/mnemonics/ppc_entryIDs.h
     h/mnemonics/x86_entryIDs.h
+    h/mnemonics/riscv64_entryIDs.h
     h/mnemonics/AMDGPU/gfx908_entryIDs.h
     h/mnemonics/AMDGPU/gfx90a_entryIDs.h
     h/mnemonics/AMDGPU/gfx940_entryIDs.h
@@ -43,6 +44,8 @@ set(_public_headers
     h/registers/ppc32_regs.h
     h/registers/ppc64_regs.h
     h/registers/reg_def.h
+    h/registers/register_set.h
+    h/registers/riscv64_regs.h
     h/registers/x86_64_regs.h
     h/registers/x86_regs.h
     h/SymReader.h
@@ -56,7 +59,6 @@ set(_private_headers
     src/addrtranslate.h
     src/addrtranslate-sysv.h
     src/arch-aarch64.h
-    src/arch.h
     src/arch-power.h
     src/arch-x86.h
     src/debug_common.h
@@ -76,7 +78,7 @@ set(_private_headers
     src/NodeIterator.h
     src/ntHeaders.h
     src/parseauxv.h
-    src/pathName.h
+    src/dyninst_filesystem.h
     src/sha1.h
     src/stats.h
     src/symbolDemangle.h
@@ -90,7 +92,7 @@ set(_sources
     src/concurrent.C
     src/Timer.C
     src/lprintf.C
-    src/pathName.C
+    src/dyninst_filesystem.C
     src/stats.C
     src/Annotatable.C
     src/MappedFile.C

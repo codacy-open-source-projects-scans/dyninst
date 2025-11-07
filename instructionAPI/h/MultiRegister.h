@@ -53,20 +53,15 @@ namespace Dyninst { namespace InstructionAPI {
     virtual ~MultiRegisterAST() = default;
     MultiRegisterAST(const MultiRegisterAST&) = default;
 
-    virtual void getChildren(vector<InstructionAST::Ptr>& children) const;
-    virtual void getChildren(vector<Expression::Ptr>& children) const;
+    virtual bool isUsed(Expression::Ptr findMe) const override;
 
-    virtual void getUses(set<InstructionAST::Ptr>& uses);
-
-    virtual bool isUsed(InstructionAST::Ptr findMe) const;
-
-    virtual std::string format(Architecture, formatStyle how = defaultStyle) const;
-    virtual std::string format(formatStyle how = defaultStyle) const;
+    virtual std::string format(Architecture, formatStyle how = defaultStyle) const override;
+    virtual std::string format(formatStyle how = defaultStyle) const override;
 
     bool operator<(const MultiRegisterAST& rhs) const;
 
-    virtual void apply(Visitor* v);
-    virtual bool bind(Expression* e, const Result& val);
+    virtual void apply(Visitor* v) override;
+    virtual bool bind(Expression* e, const Result& val) override;
 
     RegisterAST::Ptr getBaseRegAST() const { return m_Regs[0]; }
 
@@ -77,9 +72,9 @@ namespace Dyninst { namespace InstructionAPI {
     bool areConsecutive() const { return consecutive; }
 
   protected:
-    virtual bool checkRegID(MachRegister id, unsigned int low, unsigned int high) const;
-    virtual bool isStrictEqual(const InstructionAST& rhs) const;
-    virtual bool isFlag() const;
+    virtual bool checkRegID(MachRegister id, unsigned int low, unsigned int high) const override;
+    virtual bool isStrictEqual(const Expression& rhs) const override;
+    virtual bool isFlag() const override;
 
     std::vector<RegisterAST::Ptr> m_Regs;
 

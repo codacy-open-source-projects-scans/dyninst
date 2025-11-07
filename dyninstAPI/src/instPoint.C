@@ -35,9 +35,7 @@
 #include <assert.h>
 #include "dyninstAPI/src/image.h"
 #include "dyninstAPI/src/inst.h"
-#include "dyninstAPI/src/instP.h"
 #include "dyninstAPI/src/ast.h"
-#include "dyninstAPI/src/util.h"
 #include "common/src/stats.h"
 #include "dyninstAPI/src/debug.h"
 #include "dyninstAPI/src/instPoint.h"
@@ -53,10 +51,9 @@ using namespace Dyninst::ParseAPI;
 
 #include "dyninstAPI/src/function.h"
 #include "dyninstAPI/src/parse-cfg.h"
-#include "common/src/arch.h"
 #include "dyninstAPI/src/mapped_object.h"
 #include "dyninstAPI/src/emitter.h"
-#if defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86_64)
 // For 32/64-bit mode knowledge
 #include "dyninstAPI/src/emit-x86.h"
 #endif
@@ -448,15 +445,15 @@ Dyninst::PatchAPI::InstancePtr getChildInstance(Dyninst::PatchAPI::InstancePtr p
    return Dyninst::PatchAPI::InstancePtr();
 }
 
-InstancePtr instPoint::pushFront(SnippetPtr snip) {
-   InstancePtr ret = Point::pushFront(snip);
+InstancePtr instPoint::pushFront(SnippetPtr snip, SnippetType type) {
+   InstancePtr ret = Point::pushFront(snip, type);
    if (!ret) return ret;
    markModified();
    return ret;
 }
 
-InstancePtr instPoint::pushBack(SnippetPtr snip) {
-   InstancePtr ret = Point::pushBack(snip);
+InstancePtr instPoint::pushBack(SnippetPtr snip, SnippetType type) {
+   InstancePtr ret = Point::pushBack(snip, type);
    if (!ret) return ret;
    markModified();
    return ret;
@@ -478,7 +475,6 @@ void instPoint::markModified() {
 }
          
 bitArray instPoint::liveRegisters(){
-	stats_codegen.startTimer(CODEGEN_LIVENESS_TIMER);
 	static LivenessAnalyzer live1(4);
 	static LivenessAnalyzer live2(8);
 	LivenessAnalyzer *live;
@@ -517,7 +513,6 @@ bitArray instPoint::liveRegisters(){
 		default:
 			assert(0);  
 	}
-	stats_codegen.stopTimer(CODEGEN_LIVENESS_TIMER);
 	return liveRegs_;
 
 }

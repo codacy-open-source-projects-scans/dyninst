@@ -31,7 +31,6 @@
 // $Id: baseTramp.C,v 1.68 2008/09/03 06:08:44 jaw Exp $
 
 #include "dyninstAPI/src/baseTramp.h"
-#include "dyninstAPI/src/instP.h"
 #include "dyninstAPI/src/addressSpace.h"
 #include "dyninstAPI/src/dynThread.h"
 #include "dyninstAPI/src/binaryEdit.h"
@@ -300,6 +299,12 @@ bool baseTramp::generateCodeInlined(codeGen &gen,
    std::vector<AstNodePtr> miniTramps;
 
    if (point_) {
+      // Sort snippets by type to have prologues before regular snippets and epilogues after regular snippets,
+      // while preserving the order among snippets of the same type.
+      std::stable_sort(point_->begin(), point_->end(), [](const InstancePtr &a, const InstancePtr &b) {
+        return a->type() < b->type();
+      });
+
       for (instPoint::instance_iter iter = point_->begin(); 
            iter != point_->end(); ++iter) {
          AstNodePtr ast = DCAST_AST((*iter)->snippet());

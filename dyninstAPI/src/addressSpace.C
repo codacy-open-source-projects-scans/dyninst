@@ -65,6 +65,7 @@
 #include "dynThread.h"
 #include "pcEventHandler.h"
 #include "unaligned_memory_access.h"
+#include "common/h/util.h"
 
 // Implementations of non-virtual functions in the address space
 // class.
@@ -88,8 +89,7 @@ AddressSpace::AddressSpace () :
     trampGuardBase_(NULL),
     up_ptr_(NULL),
     costAddr_(0),
-    installedSpringboards_(new Relocation::InstalledSpringboards()),
-    delayRelocation_(false)
+    installedSpringboards_(new Relocation::InstalledSpringboards())
 {
    // Historically, we only use SIGTRAP as the signal for tramopline.
    // However, SIGTRAP is always intercepted by GDB, causing it is 
@@ -865,7 +865,7 @@ mapped_module *AddressSpace::findModule(const std::string &mod_name, bool wildca
    //  (there is only one module in each shared library, and that 
    //  is the library name)
    for(u_int j=0; j < mapped_objects.size(); j++){
-      mapped_module *mod = mapped_objects[j]->findModule(mod_name.c_str(), wildcard);
+      mapped_module *mod = mapped_objects[j]->findModule(mod_name, wildcard);
       if (mod) {
          return (mod);
       }
@@ -1572,12 +1572,7 @@ const func_instance *AddressSpace::isFunctionReplacement(func_instance *func) co
 using namespace Dyninst;
 using namespace Relocation;
 
-bool AddressSpace::delayRelocation() const {
-   return delayRelocation_;
-}
-
 bool AddressSpace::relocate() {
-   if (delayRelocation()) return true;
    
    relocation_cerr << "ADDRSPACE::Relocate called; modified functions reports "
                    << modifiedFunctions_.size() << " objects to relocate." << endl;

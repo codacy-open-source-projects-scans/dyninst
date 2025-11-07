@@ -35,9 +35,7 @@
 #include <assert.h>
 #include "dyninstAPI/src/image.h"
 #include "dyninstAPI/src/inst.h"
-#include "dyninstAPI/src/instP.h"
 #include "dyninstAPI/src/ast.h"
-#include "dyninstAPI/src/util.h"
 #include "common/src/stats.h"
 #include "dyninstAPI/src/debug.h"
 #include "dyninstAPI/src/instPoint.h"
@@ -73,22 +71,6 @@ unsigned findTags(const std::string ) {
   else
     return 0;
 #endif
-}
-
-unsigned generateAndWriteBranch(AddressSpace *proc, 
-                                Dyninst::Address fromAddr,
-                                Dyninst::Address newAddr,
-                                unsigned fillSize)
-{
-    assert(fillSize != 0);
-
-    codeGen gen(fillSize);
-
-    insnCodeGen::generateBranch(gen, fromAddr, newAddr);
-    gen.fillRemaining(codeGen::cgNOP);
-    
-    proc->writeTextSpace((void*)(fromAddr), gen.used(), gen.start_ptr());
-    return gen.used();
 }
 
 instMapping::instMapping(const instMapping *parIM,

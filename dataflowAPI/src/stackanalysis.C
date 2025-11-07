@@ -1151,10 +1151,8 @@ void StackAnalysis::handleXor(Instruction insn, Block *block,
    operands[0].getWriteSet(writtenSet);
    operands[1].getReadSet(readSet);
 
-   std::vector<Expression::Ptr> children0;
-   std::vector<Expression::Ptr> children1;
-   operands[0].getValue()->getChildren(children0);
-   operands[1].getValue()->getChildren(children1);
+   auto children0 = operands[0].getValue()->getSubexpressions();
+   auto children1 = operands[1].getValue()->getSubexpressions();
 
    if (readSet.size() == 1 && writtenSet.size() == 1 &&
       (*readSet.begin())->getID() == (*writtenSet.begin())->getID() &&
@@ -1419,8 +1417,7 @@ void StackAnalysis::handlePushPop(Instruction insn, Block *block,
                xferFuncs.push_back(TransferFunc::absFunc(writtenLoc, immVal));
             } else if (dynamic_cast<Dereference *>(readExpr.get())) {
                // Extract the read address expression
-               std::vector<Expression::Ptr> addrExpr;
-               readExpr->getChildren(addrExpr);
+               auto addrExpr = readExpr->getSubexpressions();
                STACKANALYSIS_ASSERT(addrExpr.size() == 1);
 
                // Try to determine the read memory address
@@ -1564,8 +1561,7 @@ void StackAnalysis::handleAddSub(Instruction insn, Block *block,
       STACKANALYSIS_ASSERT(writeSet.size() == 0);
 
       // Extract the expression inside the dereference
-      std::vector<Expression::Ptr> addrExpr;
-      operands[0].getValue()->getChildren(addrExpr);
+      auto addrExpr = operands[0].getValue()->getSubexpressions();
       STACKANALYSIS_ASSERT(addrExpr.size() == 1);
 
       // Try to determine the written memory address
@@ -1595,8 +1591,7 @@ void StackAnalysis::handleAddSub(Instruction insn, Block *block,
          // Case 3a
          STACKANALYSIS_ASSERT(readSet.size() == 1);
          const MachRegister &srcReg = (*readSet.begin())->getID();
-         if ((signed int) srcReg.regClass() == x86::XMM ||
-            (signed int) srcReg.regClass() == x86_64::XMM) {
+         if (srcReg.isVector()) {
             // Assume XMM registers only contain FP values, not pointers
             xferFuncs.push_back(TransferFunc::copyFunc(writtenLoc, writtenLoc,
                true));
@@ -1624,8 +1619,7 @@ void StackAnalysis::handleAddSub(Instruction insn, Block *block,
    const MachRegister &written = (*writeSet.begin())->getID();
    Absloc writtenLoc(written);
 
-   if ((signed int) written.regClass() == x86::XMM ||
-      (signed int) written.regClass() == x86_64::XMM) {
+   if (written.isVector()) {
       // Assume XMM registers only contain FP values, not pointers
       xferFuncs.push_back(TransferFunc::retopFunc(writtenLoc));
       return;
@@ -1634,8 +1628,7 @@ void StackAnalysis::handleAddSub(Instruction insn, Block *block,
    if (insn.readsMemory()) {
       // Case 2
       // Extract the expression inside the dereference
-      std::vector<Expression::Ptr> addrExpr;
-      operands[1].getValue()->getChildren(addrExpr);
+      auto addrExpr = operands[1].getValue()->getSubexpressions();
       STACKANALYSIS_ASSERT(addrExpr.size() == 1);
 
       // Try to determine the read memory address
@@ -1680,8 +1673,7 @@ void StackAnalysis::handleAddSub(Instruction insn, Block *block,
    } else {
       // Case 1
       const MachRegister &srcReg = (*readSet.begin())->getID();
-      if ((signed int) srcReg.regClass() == x86::XMM ||
-         (signed int) srcReg.regClass() == x86_64::XMM) {
+      if (srcReg.isVector()) {
          // Assume XMM registers only contain FP values, not pointers
          xferFuncs.push_back(TransferFunc::copyFunc(writtenLoc, writtenLoc,
             true));
@@ -1725,8 +1717,7 @@ void StackAnalysis::handleLEA(Instruction insn,
 
    InstructionAPI::Operand srcOperand = insn.getOperand(1);
    InstructionAPI::Expression::Ptr srcExpr = srcOperand.getValue();
-   std::vector<InstructionAPI::Expression::Ptr> children;
-   srcExpr->getChildren(children);
+   auto children = srcExpr->getSubexpressions();
 
    if (readSet.size() == 0) {
       // op1: imm
@@ -1745,8 +1736,7 @@ void StackAnalysis::handleLEA(Instruction insn,
             deltaExpr = children[0];
             Expression::Ptr scaleIndexExpr = children[1];
             STACKANALYSIS_ASSERT(dynamic_cast<BinaryFunction*>(scaleIndexExpr.get()));
-            children.clear();
-            scaleIndexExpr->getChildren(children);
+            children = scaleIndexExpr->getSubexpressions();
 
             regExpr = children[0];
             scaleExpr = children[1];
@@ -1808,8 +1798,7 @@ void StackAnalysis::handleLEA(Instruction insn,
          deltaExpr = children[1];
          Expression::Ptr sibExpr = children[0];
          STACKANALYSIS_ASSERT(dynamic_cast<BinaryFunction*>(sibExpr.get()));
-         children.clear();
-         sibExpr->getChildren(children);
+         children = sibExpr->getSubexpressions();
          STACKANALYSIS_ASSERT(children.size() == 2);
          foundDelta = true;
       }
@@ -1820,8 +1809,7 @@ void StackAnalysis::handleLEA(Instruction insn,
       STACKANALYSIS_ASSERT(dynamic_cast<BinaryFunction*>(scaleIndexExpr.get()));
 
       // Extract the index and scale
-      children.clear();
-      scaleIndexExpr->getChildren(children);
+      children = scaleIndexExpr->getSubexpressions();
       STACKANALYSIS_ASSERT(children.size() == 2);
       indexExpr = children[0];
       scaleExpr = children[1];
@@ -2008,8 +1996,7 @@ void StackAnalysis::handleMov(Instruction insn, Block *block,
       STACKANALYSIS_ASSERT(writtenRegs.size() == 0);
 
       // Extract the expression inside the dereference
-      std::vector<Expression::Ptr> addrExpr;
-      operands[0].getValue()->getChildren(addrExpr);
+      auto addrExpr = operands[0].getValue()->getSubexpressions();
       STACKANALYSIS_ASSERT(addrExpr.size() == 1);
 
       // Try to determine the written memory address
@@ -2039,8 +2026,7 @@ void StackAnalysis::handleMov(Instruction insn, Block *block,
          // Case 4a
          STACKANALYSIS_ASSERT(readRegs.size() == 1);
          const MachRegister &reg = (*readRegs.begin())->getID();
-         if ((signed int) reg.regClass() == x86::XMM ||
-            (signed int) reg.regClass() == x86_64::XMM) {
+         if (reg.isVector()) {
             // Assume XMM registers only contain FP values, not pointers
             xferFuncs.push_back(TransferFunc::retopFunc(writtenLoc));
          } else {
@@ -2064,8 +2050,7 @@ void StackAnalysis::handleMov(Instruction insn, Block *block,
    const MachRegister &written = (*writtenRegs.begin())->getID();
    Absloc writtenLoc(written);
 
-   if ((signed int) written.regClass() == x86::XMM ||
-      (signed int) written.regClass() == x86_64::XMM) {
+   if (written.isVector()) {
       // Assume XMM registers only contain FP values, not pointers
       xferFuncs.push_back(TransferFunc::retopFunc(writtenLoc));
       return;
@@ -2073,8 +2058,7 @@ void StackAnalysis::handleMov(Instruction insn, Block *block,
 
    if (insn.readsMemory()) {
       // Extract the expression inside the dereference
-      std::vector<Expression::Ptr> addrExpr;
-      operands[1].getValue()->getChildren(addrExpr);
+      auto addrExpr = operands[1].getValue()->getSubexpressions();
       STACKANALYSIS_ASSERT(addrExpr.size() == 1);
 
       // Try to determine the read memory address
@@ -2119,8 +2103,7 @@ void StackAnalysis::handleMov(Instruction insn, Block *block,
 
    if (read.isValid()) {
       // Case 1
-      if ((signed int) read.regClass() == x86::XMM ||
-         (signed int) read.regClass() == x86_64::XMM) {
+      if (read.isVector()) {
          // Assume XMM registers only contain FP values, not pointers
          xferFuncs.push_back(TransferFunc::retopFunc(writtenLoc));
       } else {
@@ -2159,8 +2142,7 @@ void StackAnalysis::handleZeroExtend(Instruction insn, Block *block,
    // Handle memory loads
    if (insn.readsMemory()) {
       // Extract the expression inside the dereference
-      std::vector<Expression::Ptr> addrExpr;
-      operands[1].getValue()->getChildren(addrExpr);
+      auto addrExpr = operands[1].getValue()->getSubexpressions();
       STACKANALYSIS_ASSERT(addrExpr.size() == 1);
 
       // Try to determine the read memory address
@@ -2225,8 +2207,7 @@ void StackAnalysis::handleSignExtend(Instruction insn, Block *block,
    // Handle memory loads
    if (insn.readsMemory()) {
       // Extract the expression inside the dereference
-      std::vector<Expression::Ptr> addrExpr;
-      operands[1].getValue()->getChildren(addrExpr);
+      auto addrExpr = operands[1].getValue()->getSubexpressions();
       STACKANALYSIS_ASSERT(addrExpr.size() == 1);
 
       // Try to determine the read memory address
@@ -2324,15 +2305,13 @@ void StackAnalysis::handleDefault(Instruction insn, Block *block,
    std::set<Absloc> readLocs;
    for (auto iter = writtenRegs.begin(); iter != writtenRegs.end(); iter++) {
       const MachRegister &reg = (*iter)->getID();
-      if ((signed int) reg.regClass() == x86::GPR ||
-         (signed int) reg.regClass() ==  x86_64::GPR) {
+      if (reg.isGeneralPurpose()) {
          writtenLocs.insert(Absloc(reg));
       }
    }
    for (auto iter = readRegs.begin(); iter != readRegs.end(); iter++) {
       const MachRegister &reg = (*iter)->getID();
-      if ((signed int) reg.regClass() == x86::GPR ||
-         (signed int) reg.regClass() ==  x86_64::GPR) {
+      if (reg.isGeneralPurpose()) {
          readLocs.insert(Absloc(reg));
       }
    }
@@ -2439,8 +2418,7 @@ bool StackAnalysis::handleNormalCall(Instruction insn, Block *block,
    // Identify syscalls of the form: call *%gs:0x10
    Expression::Ptr callAddrExpr = insn.getOperand(0).getValue();
    if (dynamic_cast<Dereference *>(callAddrExpr.get())) {
-      std::vector<Expression::Ptr> children;
-      callAddrExpr->getChildren(children);
+      auto children = callAddrExpr->getSubexpressions();
       if (children.size() == 1 &&
          dynamic_cast<Immediate *>(children[0].get()) &&
          children[0]->eval().convert<long>() == 16) {
@@ -2818,9 +2796,9 @@ void StackAnalysis::createEntryInput(AbslocState &input) {
    // IA32 - the in height includes the return address and therefore
    // is <wordsize>
    // POWER - the in height is 0
-#if defined(DYNINST_HOST_ARCH_POWER)
+#if defined(DYNINST_CODEGEN_ARCH_POWER)
    input[Absloc(sp())].addInitSet(Height(0));
-#elif (defined(DYNINST_HOST_ARCH_X86) || defined(DYNINST_HOST_ARCH_X86_64))
+#elif (defined(DYNINST_CODEGEN_ARCH_X86) || defined(DYNINST_HOST_ARCH_X86_64))
    input[Absloc(sp())].addInitSet(Height(-word_size));
    if (sp() == x86_64::rsp) {
       input[Absloc(x86_64::esp)].addInitSet(Height(-word_size));

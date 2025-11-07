@@ -20,12 +20,14 @@ include_guard(GLOBAL)
 # elfutils is only available on Unixes; provide a dummy target on other platforms
 if(NOT UNIX)
   if(NOT TARGET Dyninst::ElfUtils)
-    add_library(Dyninst::ElfUtils INTERFACE)
+    add_library(Dyninst::ElfUtils INTERFACE IMPORTED)
   endif()
   return()
 endif()
 
 # We need >=0.186 because of NVIDIA line map extensions
+# Delete the RISCV elf macros if version upgraded >= 0.190
+# The macros are located in symtabAPI/h/relocationEntry.h and symtabAPI/src/Object-elf.h
 set(_min_version 0.186)
 
 if(ENABLE_DEBUGINFOD)

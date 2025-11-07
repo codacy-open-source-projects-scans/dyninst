@@ -32,6 +32,7 @@ set(_private_headers
     src/emitWin.h
     src/LinkMap.h
     src/Object-elf.h
+    src/Object-pe.h
     src/Object.h
     src/Object-nt.h
     src/Type-mem.h
@@ -68,20 +69,27 @@ if(DYNINST_OS_UNIX)
     src/Object-elf.C
     src/Archive.C
     src/Archive-elf.C
-    src/parseDwarf.C
     src/LinkMap.C
     src/emitElf.C
     src/emitElfStatic.C
     src/dwarfWalker.C)
 
-  if(DYNINST_HOST_ARCH_X86_64 OR DYNINST_HOST_ARCH_I386)
+  if(DYNINST_CODEGEN_ARCH_X86_64 OR DYNINST_CODEGEN_ARCH_I386)
     list(APPEND _sources src/emitElfStatic-x86.C src/relocationEntry-elf-x86.C)
-  elseif(DYNINST_HOST_ARCH_PPC64LE)
+  elseif(DYNINST_CODEGEN_ARCH_PPC64LE)
     list(APPEND _sources src/emitElfStatic-ppc64.C src/relocationEntry-elf-ppc64.C)
-  elseif(DYNINST_HOST_ARCH_AARCH64)
+  elseif(DYNINST_CODEGEN_ARCH_AARCH64)
     list(APPEND _sources src/emitElfStatic-aarch64.C src/relocationEntry-elf-aarch64.C)
+  elseif(DYNINST_CODEGEN_ARCH_RISCV64)
+    list(APPEND _sources src/emitElfStatic-riscv64.C src/relocationEntry-elf-riscv64.C)
   else()
     list(APPEND _sources src/emitElfStatic-stub.C src/relocationEntry-stub.C)
+  endif()
+
+  if(pe-parse_FOUND)
+    list(APPEND _sources src/Object-pe.C)
+  else()
+    list(APPEND _sources src/Object-pe-stub.C)
   endif()
 elseif(DYNINST_OS_Windows)
   list(APPEND _sources src/Object-nt.C src/emitWin.C src/relocationEntry-stub.C)
@@ -96,7 +104,7 @@ dyninst_library(
   DEFINES SYMTAB_LIB
   DYNINST_DEPS common
   DYNINST_INTERNAL_DEPS dynDwarf dynElf
-  PRIVATE_DEPS OpenMP::OpenMP_CXX Dyninst::Boost Dyninst::ElfUtils
+  PRIVATE_DEPS OpenMP::OpenMP_CXX Dyninst::Boost Dyninst::ElfUtils Dyninst::PeParse
 )
 # cmake-format: on
 

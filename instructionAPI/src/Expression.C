@@ -29,9 +29,10 @@
  */
 
 #include "Expression.h"
+#include "InstructionAST.h"
 
 namespace Dyninst { namespace InstructionAPI {
-  Expression::Expression(Result_Type t) : InstructionAST(), userSetValue(t) {}
+  Expression::Expression(Result_Type t) : userSetValue(t) {}
 
   static Result sizeToResult(uint32_t size) {
     switch(size) {
@@ -63,9 +64,9 @@ namespace Dyninst { namespace InstructionAPI {
     return {};
   }
 
-  Expression::Expression(uint32_t size) : InstructionAST() { userSetValue = sizeToResult(size); }
+  Expression::Expression(uint32_t size) { userSetValue = sizeToResult(size); }
 
-  Expression::Expression(std::vector<MachRegister> rs) : InstructionAST() {
+  Expression::Expression(std::vector<MachRegister> rs) {
     uint32_t totalSize = 0;
     for(auto& mReg : rs)
       totalSize += mReg.size();
@@ -80,6 +81,12 @@ namespace Dyninst { namespace InstructionAPI {
   Expression::~Expression() {}
 
   const Result& Expression::eval() const { return userSetValue; }
+
+  void Expression::getUses(std::set<Expression::Ptr> &uses) {
+    for(auto reg : getUsedRegisters(shared_from_this())) {
+      uses.insert(reg);
+    }
+  }
 
   void Expression::setValue(const Result& knownValue) { userSetValue = knownValue; }
 
@@ -97,9 +104,5 @@ namespace Dyninst { namespace InstructionAPI {
   }
 
   bool Expression::isFlag() const { return false; }
-
-  bool DummyExpr::isStrictEqual(const InstructionAST&) const { return true; }
-
-  bool DummyExpr::checkRegID(MachRegister, unsigned int, unsigned int) const { return true; }
 
 }}

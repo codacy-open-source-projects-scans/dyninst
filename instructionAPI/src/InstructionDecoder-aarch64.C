@@ -247,8 +247,6 @@ namespace Dyninst { namespace InstructionAPI {
 
   InstructionDecoder_aarch64::~InstructionDecoder_aarch64() {}
 
-  void InstructionDecoder_aarch64::decodeOpcode(InstructionDecoder::buffer& b) { b.start += 4; }
-
   using namespace std;
 
   Instruction InstructionDecoder_aarch64::decode(InstructionDecoder::buffer& b) {
@@ -513,11 +511,6 @@ void InstructionDecoder_aarch64::set32Mode()
       if(!isRtRead)
         insn_in_progress->m_Operands.reverse();
     }
-  }
-
-  Result_Type InstructionDecoder_aarch64::makeSizeType(unsigned int) {
-    assert(0); // not implemented
-    return u32;
   }
 
   // ****************
@@ -1107,7 +1100,7 @@ void InstructionDecoder_aarch64::set32Mode()
   }
 
   Expression::Ptr InstructionDecoder_aarch64::makePstateExpr() {
-    MachRegister baseReg = aarch64::pstate;
+    MachRegister baseReg = aarch64::nzcv;
 
     return makeRegisterExpression(makeAarch64RegID(baseReg, 0));
   }
@@ -2882,16 +2875,6 @@ insn_in_progress->appendOperand(makeRnExpr(), true, true);
 
 #include "aarch64_opcode_tables.C"
 
-  void InstructionDecoder_aarch64::doDelayedDecode(const Instruction* insn_to_complete) {
-    InstructionDecoder::buffer b(insn_to_complete->ptr(), insn_to_complete->size());
-    // insn_to_complete->m_Operands.reserve(4);
-    decode(b);
-    decodeOperands(insn_in_progress.get());
-
-    Instruction* iptr = const_cast<Instruction*>(insn_to_complete);
-    *iptr = *(insn_in_progress.get());
-  }
-
   bool InstructionDecoder_aarch64::pre_process_checks(const aarch64_insn_entry& entry) {
     bool ret = false;
     entryID insnID = entry.op;
@@ -3031,9 +3014,7 @@ insn_in_progress->appendOperand(makeRnExpr(), true, true);
 
     modify_mnemonic_simd_upperhalf_insns();
 
-    if(IS_INSN_BRANCHING(insn)) {
-      decodeOperands(insn_in_progress.get());
-    }
+    decodeOperands(insn_in_progress.get());
 
     insn_in_progress->arch_decoded_from = Arch_aarch64;
     if(insn_table_entry.operands[0] != nullptr) {

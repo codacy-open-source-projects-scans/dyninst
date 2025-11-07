@@ -33,7 +33,6 @@
 #include <string>
 
 #include "inst.h"
-#include "instP.h"
 #include "instPoint.h"
 #include "function.h" // func_instance
 #include "codeRange.h"
@@ -67,6 +66,10 @@
 #include "Relocation/DynObject.h"
 
 #include "Point.h"
+
+#ifndef os_windows
+#include <sys/stat.h>
+#endif
 
 using namespace Dyninst;
 using namespace Dyninst::SymtabAPI;

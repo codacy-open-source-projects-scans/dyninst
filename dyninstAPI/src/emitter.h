@@ -59,6 +59,7 @@ class Emitter {
     virtual void emitOp(unsigned opcode, Register dest, Register src1, Register src2, codeGen &gen) = 0;
     virtual void emitOpImm(unsigned opcode1, unsigned opcode2, Register dest, Register src1, RegValue src2imm,
 			   codeGen &gen) = 0;
+    virtual void emitOpImmSimple(unsigned /* op */, Register /* dest */, Register /* src1 */, RegValue /* src2imm */, codeGen & /* gen */) {}
     virtual void emitRelOp(unsigned op, Register dest, Register src1, Register src2, codeGen &gen, bool s) = 0;
     virtual void emitRelOpImm(unsigned op, Register dest, Register src1, RegValue src2imm, codeGen &gen, bool s) = 0;
     virtual void emitDiv(Register dest, Register src1, Register src2, codeGen &gen, bool s) = 0;
@@ -113,13 +114,23 @@ class Emitter {
 
     Address getInterModuleFuncAddr(func_instance *func, codeGen& gen);
     Address getInterModuleVarAddr(const image_variable *var, codeGen& gen);
-    //bool emitPIC(codeGen& /*gen*/, Address, Address );
 
     virtual bool emitPLTCall(func_instance *, codeGen &) { assert(0); return false;}
     virtual bool emitPLTJump(func_instance *, codeGen &) { assert(0); return false;}
 
     virtual bool emitTOCJump(block_instance *, codeGen &) { assert(0); return false; }
     virtual bool emitTOCCall(block_instance *, codeGen &) { assert(0); return false; }
+
+    virtual void emitNops(unsigned /* numNops */, codeGen & /* gen */) {}
+    virtual void emitEndProgram(codeGen & /* gen */) {}
+    virtual void emitMovLiteral(Register /* reg */, uint32_t /* value */, codeGen & /* gen */) {}
+    virtual void emitConditionalBranch(bool /* onConditionTrue */, int16_t /* wordOffset */,
+                                     codeGen & /* gen */) {}
+    virtual void emitShortJump(int16_t /* wordOffset */, codeGen & /* gen */) {}
+    virtual void emitLongJump(Register /* reg */, uint64_t /* fromAddress */, uint64_t /* toAddress */, codeGen & /* gen */) {}
+
+    // TODO : Make all targets use this instead of having this functionality floating around in the codebase.
+    virtual void emitMovePCtoReg(Register /* reg */, codeGen & /* gen */) {}
 };
 
 #endif

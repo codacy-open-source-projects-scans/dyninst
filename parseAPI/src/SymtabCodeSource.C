@@ -42,11 +42,12 @@
 
 #include "CodeSource.h"
 #include "debug_parse.h"
-#include "util.h"
 #include "unaligned_memory_access.h"
 
 #include "InstructionDecoder.h"
 #include "Instruction.h"
+
+#include "Object.h"
 
 using namespace std;
 using namespace Dyninst;
@@ -697,6 +698,12 @@ SymtabCodeSource::init_try_blocks()
 	    assert(!"WARNING: overlapping try blocks\n");
 	}
     }
+}
+
+bool
+SymtabCodeSource::usesCompressedInstructionFormat() const
+{
+    return _symtab->getObject()->usesCompressedInstructionFormat();
 }
 
 bool

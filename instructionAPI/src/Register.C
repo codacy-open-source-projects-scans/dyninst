@@ -62,16 +62,7 @@ namespace Dyninst { namespace InstructionAPI {
 
   RegisterAST::~RegisterAST() {}
 
-  void RegisterAST::getChildren(vector<InstructionAST::Ptr>& /*children*/) const { return; }
-
-  void RegisterAST::getChildren(vector<Expression::Ptr>& /*children*/) const { return; }
-
-  void RegisterAST::getUses(set<InstructionAST::Ptr>& uses) {
-    uses.insert(shared_from_this());
-    return;
-  }
-
-  bool RegisterAST::isUsed(InstructionAST::Ptr findMe) const {
+  bool RegisterAST::isUsed(Expression::Ptr findMe) const {
     return findMe->checkRegID(m_Reg, m_Low, m_High);
   }
 
@@ -126,7 +117,7 @@ namespace Dyninst { namespace InstructionAPI {
     return m_High < rhs.m_High;
   }
 
-  bool RegisterAST::isStrictEqual(const InstructionAST& rhs) const {
+  bool RegisterAST::isStrictEqual(const Expression& rhs) const {
     if(rhs.checkRegID(m_Reg, m_Low, m_High)) {
       const RegisterAST& rhs_reg = dynamic_cast<const RegisterAST&>(rhs);
       if((m_Low == rhs_reg.m_Low) && (m_High == rhs_reg.m_High)) {
@@ -138,7 +129,7 @@ namespace Dyninst { namespace InstructionAPI {
     return false;
   }
 
-  RegisterAST::Ptr RegisterAST::promote(const InstructionAST::Ptr regPtr) {
+  RegisterAST::Ptr RegisterAST::promote(const Expression::Ptr regPtr) {
     const RegisterAST::Ptr r = boost::dynamic_pointer_cast<RegisterAST>(regPtr);
     return RegisterAST::promote(r.get());
   }
@@ -156,7 +147,7 @@ namespace Dyninst { namespace InstructionAPI {
                                            regPtr->getPromotedReg().size());
   }
 
-  bool RegisterAST::isFlag() const { return m_Reg.getBaseRegister() == x86::flags; }
+  bool RegisterAST::isFlag() const { return m_Reg.isFlag(); }
 
   bool RegisterAST::checkRegID(MachRegister r, unsigned int low, unsigned int high) const {
     return (r.getBaseRegister() == m_Reg.getBaseRegister()) && (low <= m_High) && (high >= m_Low);

@@ -28,54 +28,47 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#if !defined(INSTRUCTIONAST_H)
-#define INSTRUCTIONAST_H
+#ifndef DYNINST_INSTRUCTIONAPI_INSTRUCTIONAST_H
+#define DYNINST_INSTRUCTIONAPI_INSTRUCTIONAST_H
 
-#include "ArchSpecificFormatters.h"
-#include "Result.h"
-#include "boost/enable_shared_from_this.hpp"
-#include "util.h"
+#include "Expression.h"
+#include "BinaryFunction.h"
+#include "Dereference.h"
+#include "Immediate.h"
+#include "MultiRegister.h"
+#include "Register.h"
+#include "Ternary.h"
+#include "Visitor.h"
 
-#include <iostream>
-#include <set>
-#include <string>
-#include <vector>
+#include <boost/shared_ptr.hpp>
 
 namespace Dyninst { namespace InstructionAPI {
 
-  class InstructionAST;
+  inline std::vector<RegisterAST::Ptr> getUsedRegisters(Expression::Ptr expr) {
+    if(!expr) {
+      return {};
+    }
 
-  using std::set;
-  using std::vector;
+    struct reg_visitor : Visitor {
+      reg_visitor() {
+        regs.reserve(5);
+      }
+      void visit(RegisterAST* r) {
+        regs.push_back(boost::reinterpret_pointer_cast<RegisterAST>(r->shared_from_this()));
+      }
+      void visit(BinaryFunction*) {}
+      void visit(Dereference*) {}
+      void visit(Immediate*) {}
+      void visit(MultiRegisterAST*) {}
 
-  enum formatStyle { defaultStyle, memoryAccessStyle };
+      std::vector<RegisterAST::Ptr> regs;
+    };
 
-  class DYNINST_EXPORT InstructionAST : public boost::enable_shared_from_this<InstructionAST> {
-  public:
-    typedef boost::shared_ptr<InstructionAST> Ptr;
+    reg_visitor rv;
+    expr->apply(&rv);
+    return rv.regs;
+  }
 
-    InstructionAST();
-    InstructionAST(const InstructionAST&) = default;
-    virtual ~InstructionAST();
-
-    bool operator==(const InstructionAST& rhs) const;
-
-    virtual void getChildren(vector<InstructionAST::Ptr>& children) const = 0;
-
-    virtual void getUses(set<InstructionAST::Ptr>& uses) = 0;
-    virtual bool isUsed(InstructionAST::Ptr findMe) const = 0;
-
-    virtual std::string format(Architecture arch, formatStyle how = defaultStyle) const = 0;
-    virtual std::string format(formatStyle how = defaultStyle) const = 0;
-
-  protected:
-    friend class MultiRegisterAST;
-    friend class RegisterAST;
-    friend class Immediate;
-    virtual bool isStrictEqual(const InstructionAST& rhs) const = 0;
-    virtual bool checkRegID(MachRegister, unsigned int = 0, unsigned int = 0) const;
-    virtual const Result& eval() const = 0;
-  };
 }}
 
 #endif

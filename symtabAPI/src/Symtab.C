@@ -39,14 +39,14 @@
 #include <sstream>
 
 #include "common/src/Timer.h"
-#include "common/src/pathName.h"
+#include "common/src/dyninst_filesystem.h"
 
 #include "Symtab.h"
 #include "Module.h"
 #include "Collections.h"
 #include "Function.h"
 #include "Variable.h"
-#include "pathName.h"
+#include "dyninst_filesystem.h"
 #include "annotations.h"
 
 #include "debug.h"
@@ -327,6 +327,21 @@ DYNINST_EXPORT bool Symtab::isSharedLibrary() const
     return obj_private->isSharedLibrary();
 }
 
+DYNINST_EXPORT bool Symtab::isUnlinkedObjectFile() const
+{
+    return obj_private->isUnlinkedObjectFile();
+}
+
+DYNINST_EXPORT FileFormat Symtab::getFileFormat() const
+{
+    return obj_private->getFileFormat();
+}
+
+DYNINST_EXPORT bool Symtab::isPositionIndependent() const
+{
+    return obj_private->isPositionIndependent();
+}
+
 DYNINST_EXPORT bool Symtab::isStripped() 
 {
 #if defined(os_linux) || defined(os_freebsd)
@@ -412,7 +427,7 @@ void Symtab::setTOCOffset(Offset off) {
   return;
 }
 
-DYNINST_EXPORT string Symtab::getDefaultNamespacePrefix() const
+DYNINST_EXPORT string const& Symtab::getDefaultNamespacePrefix() const
 {
     return defaultNamespacePrefix;
 }
@@ -662,7 +677,7 @@ bool Symtab::addSymbolToAggregates(const Symbol *sym_tmp)
              * and their Region is undefined. In this case, always create a 
              * new variable.
              */
-            if( obj_RelocatableFile == getObjectType() &&
+            if( getObject()->isUnlinkedObjectFile() &&
                 ( var->getRegion() != sym->getRegion() ||
                   NULL == sym->getRegion() ) )
             {
@@ -731,7 +746,7 @@ void Symtab::setModuleLanguages(dyn_hash_map<std::string, supportedLanguages> *m
          continue;  // need to find some way to get shared object languages?
       }
 
-      const std::string fn = currmod->fileName();
+      std::string const& fn = currmod->fileName();
       if (mod_langs->find(currmod->fileName()) != mod_langs->end())
       {
          currLang = (*mod_langs)[fn];
@@ -792,7 +807,7 @@ Module *Symtab::getOrCreateModule(const std::string &modName,
     return mod;
 }
 
-Symtab::Symtab(std::string filename, bool defensive_bin, bool &err) : Symtab()
+Symtab::Symtab(std::string const& filename, bool defensive_bin, bool &err) : Symtab()
 {
    isDefensiveBinary_ = defensive_bin;
 
@@ -807,8 +822,8 @@ Symtab::Symtab(std::string filename, bool defensive_bin, bool &err) : Symtab()
 #endif
 
    //  createMappedFile handles reference counting
-   mf = MappedFile::createMappedFile(filename);
-   if (!mf) {
+   impl->mf = MappedFile::createMappedFile(filename);
+   if (!impl->mf) {
       create_printf("%s[%d]: WARNING: creating symtab for %s, " 
                     "createMappedFile() failed\n", FILE__, __LINE__, 
                     filename.c_str());
@@ -816,9 +831,9 @@ Symtab::Symtab(std::string filename, bool defensive_bin, bool &err) : Symtab()
       return;
    }
 
-   obj_private = new Object(mf, defensive_bin, 
-                            symtab_log_perror, true, this);
-   if (obj_private->hasError()) {
+   obj_private = parseObjectFile(impl->mf, defensive_bin,
+                                 symtab_log_perror, true, this);
+   if (!obj_private || obj_private->hasError()) {
       create_printf("%s[%d]: WARNING: creating symtab for %s, " 
                     "Object ctor failed\n", FILE__, __LINE__, 
                     filename.c_str());
@@ -832,7 +847,7 @@ Symtab::Symtab(std::string filename, bool defensive_bin, bool &err) : Symtab()
       err = true;
    }
 
-   member_name_ = mf->filename();
+   member_name_ = impl->mf->filename();
 
    defaultNamespacePrefix = "";
 }
@@ -848,8 +863,8 @@ Symtab::Symtab(unsigned char *mem_image, size_t image_size,
                  FILE__, __LINE__, (void*)mem_image);
 
    //  createMappedFile handles reference counting
-   mf = MappedFile::createMappedFile(mem_image, image_size, name);
-   if (!mf) {
+   impl->mf = MappedFile::createMappedFile(mem_image, image_size, name);
+   if (!impl->mf) {
       create_printf("%s[%d]: WARNING: creating symtab for memory image at " 
                     "addr %p, createMappedFile() failed\n", FILE__, __LINE__, 
                     (void*)mem_image);
@@ -857,9 +872,9 @@ Symtab::Symtab(unsigned char *mem_image, size_t image_size,
       return;
    }
 
-   obj_private = new Object(mf, defensive_bin, 
-                            symtab_log_perror, true, this);
-   if (obj_private->hasError()) {
+   obj_private = parseObjectFile(impl->mf, defensive_bin,
+                                 symtab_log_perror, true, this);
+   if (!obj_private || obj_private->hasError()) {
      err = true;
      return;
    }
@@ -871,7 +886,7 @@ Symtab::Symtab(unsigned char *mem_image, size_t image_size,
       err = true;
    }
 
-   member_name_ = mf->filename();
+   member_name_ = impl->mf->filename();
 
    defaultNamespacePrefix = "";
 }
@@ -900,23 +915,12 @@ bool Symtab::extractInfo(Object *linkedFile)
      * members are imprecise. These members should probably be deprecated in
      * favor of the getCodeRegions and getDataRegions functions.
      */
-#if defined(os_windows)
-	preferedBase_ = linkedFile->getPreferedBase();
-#else
-	preferedBase_ = 0;
-#endif
     imageOffset_ = linkedFile->code_off();
     dataOffset_ = linkedFile->data_off();
-
-#if defined(os_windows)
-	preferedBase_ = linkedFile->getPreferedBase();
-#else
-	preferedBase_ = 0;
-#endif
-
+    preferedBase_ = linkedFile->getPreferedBase();
     imageLen_ = linkedFile->code_len();
     dataLen_ = linkedFile->data_len();
-    
+
     if (0 == imageLen_ || 0 == linkedFile->code_ptr()) 
     {
        if (0 == linkedFile->code_ptr()) {
@@ -924,7 +928,7 @@ bool Symtab::extractInfo(Object *linkedFile)
        }
        else 
        {
-           if( object_type_ != obj_RelocatableFile ||
+           if( !linkedFile->isUnlinkedObjectFile() ||
                linkedFile->code_ptr() == 0)
            {
                setSymtabError(Obj_Parsing);
@@ -941,15 +945,16 @@ bool Symtab::extractInfo(Object *linkedFile)
 
     hasRel_ = false;
     hasRela_ = false;
-    hasReldyn_ = false;
-    hasReladyn_ = false;
-    hasRelplt_ = false;
-    hasRelaplt_ = false;
+    hasReldyn_ = linkedFile->hasReldyn();
+    hasReladyn_ = linkedFile->hasReladyn();
+    hasRelplt_ = linkedFile->hasRelplt();
+    hasRelaplt_ = linkedFile->hasRelaplt();
+
     regions_ = linkedFile->getAllRegions();
 
     for (unsigned index=0;index<regions_.size();index++)
-      {
-      regions_[index]->setSymtab(this);
+    {
+        regions_[index]->setSymtab(this);
 
         if ( regions_[index]->isLoadable() ) 
         {
@@ -978,13 +983,6 @@ bool Symtab::extractInfo(Object *linkedFile)
             hasRela_ = true;
         }
 
-#if defined(os_linux) || defined(os_freebsd)
-        hasReldyn_ = linkedFile->hasReldyn();
-	hasReladyn_ = linkedFile->hasReladyn();
-        hasRelplt_ = linkedFile->hasRelplt();
-        hasRelaplt_ = linkedFile->hasRelaplt();
-#endif	
-
     }
     // sort regions_ & codeRegions_ vectors
 
@@ -1002,7 +1000,6 @@ bool Symtab::extractInfo(Object *linkedFile)
     entry_address_ = linkedFile->getEntryAddress();
     base_address_ = linkedFile->getBaseAddress();
     load_address_ = linkedFile->getLoadAddress();
-    object_type_  = linkedFile->objType();
     is_eel_ = linkedFile->isEEL();
     linkedFile->getSegments(segments_);
 
@@ -1052,9 +1049,7 @@ bool Symtab::extractInfo(Object *linkedFile)
     // determined before this step).
     
     // Also identifies aliases (multiple names with equal addresses)
-#if !defined(os_windows)
     linkedFile->getDependencies(deps_);
-#endif
 
     
     linkedFile->getAllExceptions(excpBlocks);
@@ -1082,7 +1077,7 @@ bool Symtab::isCode(const Offset where)  const
    if (!codeRegions_.size()) 
    {
       create_printf("%s[%d] No code regions in %s \n",
-                    __FILE__, __LINE__, mf->filename().c_str());
+                    __FILE__, __LINE__, impl->mf->filename().c_str());
       return false;
    }
 
@@ -1127,7 +1122,7 @@ bool Symtab::isData(const Offset where)  const
    if (!dataRegions_.size()) 
    {
       create_printf("%s[%d] No data regions in %s \n",
-                    __FILE__,__LINE__,mf->filename().c_str());
+                    __FILE__,__LINE__,impl->mf->filename().c_str());
       return false;
    }
 
@@ -1170,7 +1165,7 @@ DYNINST_EXPORT bool Symtab::findPltEntryByTarget(const Address target_address, r
      * linker
      */
     if(relocation_table_.empty() && !isStaticBinary() &&
-       getObjectType() != obj_RelocatableFile)
+       !getObject()->isUnlinkedObjectFile())
     {
         fprintf(stderr, "%s[%d]:  WARN:  zero func bindings\n", FILE__, __LINE__);
     }
@@ -1285,12 +1280,12 @@ Symtab::~Symtab()
    // open method
    delete obj_private;
 
-   if (mf) MappedFile::closeMappedFile(mf);
+   if (impl->mf) MappedFile::closeMappedFile(impl->mf);
 
 }	
 
 bool Symtab::openFile(Symtab *&obj, void *mem_image, size_t size, 
-                      std::string name, def_t def_bin)
+                      std::string const& name, def_t def_bin)
 {
    bool err = false;
 #if defined(TIMED_PARSE)
@@ -1346,14 +1341,14 @@ bool Symtab::closeSymtab(Symtab *st)
 	return found;
 }
 
-Symtab *Symtab::findOpenSymtab(std::string filename)
+Symtab *Symtab::findOpenSymtab(std::string const& filename)
 {
    unsigned numSymtabs = allSymtabs.size();
 	for (unsigned u=0; u<numSymtabs; u++) 
 	{
 		assert(allSymtabs[u]);
 		if (filename == allSymtabs[u]->file() && 
-          allSymtabs[u]->mf->canBeShared()) 
+          allSymtabs[u]->impl->mf->canBeShared())
 		{
             allSymtabs[u]->_ref_cnt++;
 			// return it
@@ -1363,7 +1358,7 @@ Symtab *Symtab::findOpenSymtab(std::string filename)
 	return NULL;
 }
 
-bool Symtab::openFile(Symtab *&obj, std::string filename, def_t def_binary)
+bool Symtab::openFile(Symtab *&obj, std::string const& filename, def_t def_binary)
 {
    bool err = false;
 #if defined(TIMED_PARSE)
@@ -1409,7 +1404,7 @@ bool Symtab::openFile(Symtab *&obj, std::string filename, def_t def_binary)
    return !err;
 }
 
-bool Symtab::addRegion(Offset vaddr, void *data, unsigned int dataSize, std::string name, 
+bool Symtab::addRegion(Offset vaddr, void *data, unsigned int dataSize, std::string const& name,
         Region::RegionType rType_, bool loadable, unsigned long memAlign, bool tls)
 {
    Region *sec;
@@ -1523,7 +1518,7 @@ void Symtab::parseLineInformation()
 }
 
 DYNINST_EXPORT bool Symtab::getAddressRanges(std::vector<AddressRange > &ranges,
-                                            std::string lineSource, unsigned int lineNo)
+                                            std::string const& lineSource, unsigned int lineNo)
 {
    unsigned int originalSize = ranges.size();
    parseLineInformation();
@@ -1631,7 +1626,7 @@ DYNINST_EXPORT void Symtab::getAllbuiltInTypes(vector<boost::shared_ptr<Type>>& 
    return builtInTypes()->getAllBuiltInTypes(v);
 }
 
-DYNINST_EXPORT bool Symtab::findType(boost::shared_ptr<Type> &type, std::string name)
+DYNINST_EXPORT bool Symtab::findType(boost::shared_ptr<Type> &type, std::string const& name)
 {
    parseTypesNow();
 
@@ -1690,7 +1685,7 @@ DYNINST_EXPORT boost::shared_ptr<Type> Symtab::findType(unsigned type_id, Type::
    return t;	
 }
 
-DYNINST_EXPORT bool Symtab::findVariableType(boost::shared_ptr<Type>& type, std::string name)
+DYNINST_EXPORT bool Symtab::findVariableType(boost::shared_ptr<Type>& type, std::string const& name)
 {
    parseTypesNow();
     type = NULL;
@@ -1708,7 +1703,7 @@ DYNINST_EXPORT bool Symtab::findVariableType(boost::shared_ptr<Type>& type, std:
    return true;	
 }
 
-DYNINST_EXPORT bool Symtab::findLocalVariable(std::vector<localVar *>&vars, std::string name)
+DYNINST_EXPORT bool Symtab::findLocalVariable(std::vector<localVar *>&vars, std::string const& name)
 {
    parseTypesNow();
    unsigned origSize = vars.size();
@@ -1759,13 +1754,13 @@ DYNINST_EXPORT bool Symtab::isStaticBinary() const
    return isStaticBinary_;
 }
 
-bool Symtab::setDefaultNamespacePrefix(string &str)
+bool Symtab::setDefaultNamespacePrefix(string str)
 {
-   defaultNamespacePrefix = str;
+   defaultNamespacePrefix = std::move(str);
    return true;
 }
 
-DYNINST_EXPORT bool Symtab::emitSymbols(Object *linkedFile,std::string filename, unsigned flag)
+DYNINST_EXPORT bool Symtab::emitSymbols(Object *linkedFile,std::string const& filename, unsigned flag)
 {
     // Start with all the defined symbols
     std::set<Symbol* > allSyms;
@@ -1779,7 +1774,7 @@ DYNINST_EXPORT bool Symtab::emitSymbols(Object *linkedFile,std::string filename,
     return linkedFile->emitDriver(filename, allSyms, flag);
 }
 
-DYNINST_EXPORT bool Symtab::emit(std::string filename, unsigned flag)
+DYNINST_EXPORT bool Symtab::emit(std::string const& filename, unsigned flag)
 {
 	Object *obj = getObject();
 	if (!obj)
@@ -1790,12 +1785,12 @@ DYNINST_EXPORT bool Symtab::emit(std::string filename, unsigned flag)
    return emitSymbols(obj, filename, flag);
 }
 
-DYNINST_EXPORT void Symtab::addDynLibSubstitution(std::string oldName, std::string newName)
+DYNINST_EXPORT void Symtab::addDynLibSubstitution(std::string const& oldName, std::string const& newName)
 {
    dynLibSubs[oldName] = newName;
 }
 
-DYNINST_EXPORT std::string Symtab::getDynLibSubstitution(std::string name)
+DYNINST_EXPORT std::string Symtab::getDynLibSubstitution(std::string const& name)
 {
    map<std::string, std::string>::iterator loc = dynLibSubs.find(name);
 
@@ -1979,11 +1974,6 @@ DYNINST_EXPORT Offset Symtab::getFreeOffset(unsigned size)
 #endif	
 }
 
-DYNINST_EXPORT ObjectType Symtab::getObjectType() const 
-{
-   return object_type_;
-}
-
 DYNINST_EXPORT Dyninst::Architecture Symtab::getArchitecture() const
 {
    return getObject()->getArch();
@@ -1991,21 +1981,21 @@ DYNINST_EXPORT Dyninst::Architecture Symtab::getArchitecture() const
 
 DYNINST_EXPORT char *Symtab::mem_image() const 
 {
-   return (char *)mf->base_addr();
+   return (char *)impl->mf->base_addr();
 }
 
-DYNINST_EXPORT std::string Symtab::file() const 
+DYNINST_EXPORT std::string const& Symtab::file() const
 {
-   assert(mf);
-   return mf->filename();
+   assert(impl->mf);
+   return impl->mf->filename();
 }
 
 DYNINST_EXPORT std::string Symtab::name() const 
 {
-  return extract_pathname_tail(mf->filename());
+  return Dyninst::filesystem::extract_filename(impl->mf->filename());
 }
 
-DYNINST_EXPORT std::string Symtab::memberName() const 
+DYNINST_EXPORT std::string const& Symtab::memberName() const
 {
     return member_name_;
 }
@@ -2082,7 +2072,7 @@ DYNINST_EXPORT Offset Symtab::getElfDynamicOffset()
 #endif
 }
 
-DYNINST_EXPORT bool Symtab::removeLibraryDependency(std::string lib)
+DYNINST_EXPORT bool Symtab::removeLibraryDependency(std::string const& lib)
 {
 #if defined(os_windows)
    return false;
@@ -2095,7 +2085,7 @@ DYNINST_EXPORT bool Symtab::removeLibraryDependency(std::string lib)
 #endif
 }
    
-DYNINST_EXPORT bool Symtab::addLibraryPrereq(std::string name)
+DYNINST_EXPORT bool Symtab::addLibraryPrereq(std::string const& name)
 {
    Object *obj = getObject();
 	if (!obj)
@@ -2242,7 +2232,7 @@ DYNINST_EXPORT bool Symtab::isDefensiveBinary() const
 
 DYNINST_EXPORT bool Symtab::canBeShared()
 {
-   return mf->canBeShared();
+   return impl->mf->canBeShared();
 }
 
 DYNINST_EXPORT Offset Symtab::getInitOffset()

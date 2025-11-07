@@ -49,6 +49,8 @@
 #include "Region.h"
 #include "debug.h"
 #include "common/src/arch-power.h"
+#include "elf.h"
+#include "unaligned_memory_access.h"
 
 using namespace Dyninst;
 using namespace Dyninst::SymtabAPI;
@@ -72,6 +74,13 @@ unsigned int setBits(unsigned int target, unsigned int pos, unsigned int len, un
 
     return target;
 }
+
+// The size of the return type of 'setBits' is used to determine the number of bytes
+// written to specific ELF fields. It's imperative they match the sizes of the types
+// provided by elfutils.
+static_assert(sizeof(decltype(setBits(0,0,0,0))) == sizeof(Elf32_Word), "setBits return type is incompatible with Elf32_Word");
+static_assert(sizeof(decltype(setBits(0,0,0,0))) == sizeof(Elf64_Word), "setBits return type is incompatible with Elf64_Word");
+
 
 #if defined(os_freebsd)
 #define R_X86_64_JUMP_SLOT R_X86_64_JMP_SLOT
@@ -336,21 +345,36 @@ bool emitElfStatic::archSpecificRelocation(Symtab* targetSymtab, Symtab* srcSymt
 	  fprintf(stderr, "Unhandled relocation type %lu\n",rel.getRelType());
 	  assert(0);
 	}
-        rewrite_printf("\tbefore: relocation = 0x%lx @ 0x%lx target data %lx %lx %lx %lx %lx %lx \n", 
-	(unsigned long)relocation, relOffset,targetData[dest-2],  targetData[dest-1], targetData[dest], targetData[dest+1],  targetData[dest+2],  targetData[dest+3]);
+        rewrite_printf("\tbefore: relocation = 0x%lx @ 0x%lx target data 0x%lx 0x%lx 0x%lx 0x%lx 0x%lx 0x%lx \n",
+                       static_cast<unsigned long>(relocation),
+                       static_cast<unsigned long>(relOffset),
+                       static_cast<unsigned long>(targetData[dest-2]),
+                       static_cast<unsigned long>(targetData[dest-1]),
+                       static_cast<unsigned long>(targetData[dest]),
+                       static_cast<unsigned long>(targetData[dest+1]),
+                       static_cast<unsigned long>(targetData[dest+2]),
+                       static_cast<unsigned long>(targetData[dest+3]));
 
 	if (relocation_length == 64) {
 		char *td = (targetData + dest - (dest%8));
-		uint64_t target = relocation;
+		auto const target = static_cast<uint64_t>(relocation);
         	memcpy(td, &target, 2*sizeof(Elf64_Word));
 	} else {
 		char *td = (targetData + dest - (dest%4));
-	        unsigned int target = *((unsigned int *) td);
+	        auto target = Dyninst::read_memory_as<Elf64_Word>(td);
 	        target = setBits(target, relocation_pos, relocation_length, relocation);
         	memcpy(td, &target, sizeof(Elf64_Word));
 	}
 
-        rewrite_printf("\tafter: relocation = 0x%lx @ 0x%lx target data %lx %lx %lx %lx %lx %lx \n", (unsigned long)relocation, relOffset,targetData[dest-2],  targetData[dest-1], targetData[dest], targetData[dest+1],  targetData[dest+2],  targetData[dest+3]);
+        rewrite_printf("\tafter: relocation = 0x%lx @ 0x%lx target data 0x%lx 0x%lx 0x%lx 0x%lx 0x%lx 0x%lx \n",
+                       static_cast<unsigned long>(relocation),
+                       static_cast<unsigned long>(relOffset),
+                       static_cast<unsigned long>(targetData[dest-2]),
+                       static_cast<unsigned long>(targetData[dest-1]),
+                       static_cast<unsigned long>(targetData[dest]),
+                       static_cast<unsigned long>(targetData[dest+1]),
+                       static_cast<unsigned long>(targetData[dest+2]),
+                       static_cast<unsigned long>(targetData[dest+3]));
     } else if (PPC32_WIDTH == addressWidth_ ){
 	int relocation_length = sizeof(Elf32_Word)*8; // in bits
 	int relocation_pos = 0; // in bits
@@ -645,23 +669,37 @@ default:
      return false;
         }
 
-        rewrite_printf(" relocation = 0x%lx @ 0x%lx target data 0x%lx %lx %lx %lx \n", relocation, relOffset, targetData[dest], targetData[dest+1],  targetData[dest+2],  targetData[dest+3]);
-	if (rel.getRelType() == R_PPC_REL24) {
-	unsigned int *td = (unsigned int *) targetData;
+        rewrite_printf(" relocation = 0x%lx @ 0x%lx target data 0x%lx 0x%lx 0x%lx 0x%lx \n",
+                       static_cast<unsigned long>(relocation),
+                       static_cast<unsigned long>(relOffset),
+                       static_cast<unsigned long>(targetData[dest]),
+                       static_cast<unsigned long>(targetData[dest+1]),
+                       static_cast<unsigned long>(targetData[dest+2]),
+                       static_cast<unsigned long>(targetData[dest+3]));
+
+  if (rel.getRelType() == R_PPC_REL24) {
+	auto *td = reinterpret_cast<unsigned int*>(targetData);
 	unsigned int target;
 	target = td[dest/4];
 	target = setBits(target, relocation_pos, relocation_length, relocation);
         memcpy(&targetData[dest], &target, sizeof(Elf32_Word));
 	} else {
-	unsigned int *td = (unsigned int *) targetData;
+	auto *td = reinterpret_cast<unsigned int*>(targetData);
 	unsigned int target;
 	target = td[dest/4];
 	target = setBits(target, relocation_pos, relocation_length, relocation);
         memcpy(&td[dest/4], &target, sizeof(Elf32_Word));
-        rewrite_printf(" relocation = 0x%lx @ 0x%lx target data 0x%lx %lx %lx %lx \n", relocation, relOffset, targetData[dest], targetData[dest+1],  targetData[dest+2],  targetData[dest+3]);
+
+        rewrite_printf(" relocation = 0x%lx @ 0x%lx target data 0x%lx 0x%lx 0x%lx 0x%lx \n",
+                       static_cast<unsigned long>(relocation),
+                       static_cast<unsigned long>(relOffset),
+                       static_cast<unsigned long>(targetData[dest]),
+                       static_cast<unsigned long>(targetData[dest+1]),
+                       static_cast<unsigned long>(targetData[dest+2]),
+                       static_cast<unsigned long>(targetData[dest+3]));
 	}
     if (branch_pred >= 0) {
-	unsigned int *td = (unsigned int *) targetData;
+	auto *td = reinterpret_cast<unsigned int*>(targetData);
 	unsigned int target;
 	target = td[dest/4];
 	target = setBits(target, 10, 1, branch_pred);
@@ -1061,7 +1099,7 @@ bool emitElfStatic::handleInterModuleSpecialCase(Symtab * /*target*/,
   // or create it. 
   //
 
-  unsigned int *td = (unsigned int *)(data + dest - (dest % 4));
+  auto *td = reinterpret_cast<unsigned int *>(data + dest - (dest % 4));
   unsigned int &call = td[0];
   unsigned int &post = td[1];
 

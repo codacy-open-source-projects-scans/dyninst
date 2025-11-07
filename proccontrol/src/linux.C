@@ -51,7 +51,7 @@
 #include "common/src/vm_maps.h"
 #include "compiler_annotations.h"
 
-#include "common/src/pathName.h"
+#include "common/src/dyninst_filesystem.h"
 #include "PCErrors.h"
 #include "Generator.h"
 #include "Event.h"
@@ -70,6 +70,7 @@
 #include "snippets.h"
 
 #include "common/src/linuxKludges.h"
+#include "linuxHeaders.h"
 #include "common/src/parseauxv.h"
 
 #include "boost/shared_ptr.hpp"
@@ -1102,7 +1103,7 @@ bool linux_process::plat_execed()
 
    char proc_exec_name[128];
    snprintf(proc_exec_name, 128, "/proc/%d/exe", getPid());
-   executable = resolve_file_path(proc_exec_name);
+   executable = Dyninst::filesystem::canonicalize(proc_exec_name);
    return true;
 }
 
@@ -2223,7 +2224,7 @@ static void init_dynreg_to_user()
    dynreg_to_user[aarch64::x30]        = make_pair(cur+=step, 8);
    dynreg_to_user[aarch64::sp]         = make_pair(cur+=step, 8);
    dynreg_to_user[aarch64::pc]         = make_pair(cur+=step, 8);
-   dynreg_to_user[aarch64::pstate]     = make_pair(cur+=step, 8);
+   dynreg_to_user[aarch64::nzcv]     = make_pair(cur+=step, 8);
 
    initialized = true;
 
@@ -2604,11 +2605,11 @@ bool linux_thread::plat_convertToSystemRegs(const int_registerPool &regpool, uns
             //In this case our definition of GPR is anything stored in the elf_gregset_t of
             // the user struct.
             case Dyninst::Arch_x86:
-               is_gpr = ((rclass == x86::GPR) || (rclass == x86::FLAG) ||
+               is_gpr = (reg.isGeneralPurpose() || (rclass == x86::FLAG) ||
                          (rclass == x86::MISC) || (rclass == x86::SEG) || !rclass);
                break;
             case Dyninst::Arch_x86_64:
-               is_gpr = ((rclass == x86_64::GPR) || (rclass == x86_64::FLAG) ||
+               is_gpr = (reg.isGeneralPurpose() || (rclass == x86_64::FLAG) ||
                          (rclass == x86_64::MISC) || (rclass == x86_64::SEG) || !rclass);
                break;
             case Dyninst::Arch_ppc32:

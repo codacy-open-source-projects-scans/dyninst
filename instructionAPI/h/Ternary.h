@@ -50,12 +50,7 @@ namespace Dyninst { namespace InstructionAPI {
 
     virtual ~TernaryAST();
 
-    virtual void getChildren(vector<InstructionAST::Ptr>& children) const;
-    virtual void getChildren(vector<Expression::Ptr>& children) const;
-
-    virtual void getUses(set<InstructionAST::Ptr>& uses);
-
-    virtual bool isUsed(InstructionAST::Ptr findMe) const;
+    virtual bool isUsed(Expression::Ptr findMe) const;
 
     virtual std::string format(Architecture, formatStyle how = defaultStyle) const;
     virtual std::string format(formatStyle how = defaultStyle) const;
@@ -70,7 +65,7 @@ namespace Dyninst { namespace InstructionAPI {
     Result_Type result_type{};
 
   protected:
-    virtual bool isStrictEqual(const InstructionAST& rhs) const;
+    virtual bool isStrictEqual(const Expression& rhs) const;
   };
 
 }}

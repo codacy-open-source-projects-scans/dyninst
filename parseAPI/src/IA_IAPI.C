@@ -32,7 +32,6 @@
 #include "dyntypes.h"
 #include "registers/x86_regs.h"
 #include "IA_IAPI.h"
-#include "util.h"
 #include "Dereference.h"
 #include "Immediate.h"
 #include "BinaryFunction.h"
@@ -317,18 +316,14 @@ bool IA_IAPI::hasCFT() const
     return hascftstatus.second;
 }
 
-bool IA_IAPI::isAbort() const
+bool IA_IAPI::isSoftwareException() const
 {
-    entryID e = curInsn().getOperation().getID();
-    return e == e_int3 ||
-        e == e_hlt ||
-        e == e_ud2;
+    return curInsn().isSoftwareException();
 }
 
 bool IA_IAPI::isInvalidInsn() const
 {
-    entryID e = curInsn().getOperation().getID();
-    if(e == e_No_Entry)
+    if(!curInsn().isValid())
     {
         parsing_printf("...WARNING: un-decoded instruction at 0x%lx\n", current);
         return true;
@@ -716,7 +711,7 @@ void IA_IAPI::getNewEdges(std::vector<std::pair< Address, EdgeTypeEnum> >& outEd
 bool IA_IAPI::isIPRelativeBranch() const
 {
     // These don't exist on IA32...
-#if !defined(DYNINST_HOST_ARCH_X86_64)
+#if !defined(DYNINST_CODEGEN_ARCH_X86_64)
     return false;
 #endif
     Instruction ci = curInsn();

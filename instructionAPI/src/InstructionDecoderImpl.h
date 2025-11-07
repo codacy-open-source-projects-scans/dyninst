@@ -33,12 +33,10 @@
 
 #include <stdint.h>
 #include "Expression.h"
-#include "MultiRegister.h"
 #include "Architecture.h"
-#include "Operation_impl.h"
 #include "entryIDs.h"
 #include "Instruction.h"
-#include "InstructionDecoder.h" // buffer...anything else?
+#include "InstructionDecoder.h"
 
 namespace Dyninst
 {
@@ -52,15 +50,9 @@ class InstructionDecoderImpl
         InstructionDecoderImpl(Architecture a) : m_Arch(a) {}
         virtual ~InstructionDecoderImpl() {}
         virtual Instruction decode(InstructionDecoder::buffer& b) = 0;
-        virtual void doDelayedDecode(const Instruction* insn_to_complete) = 0;
-        virtual void setMode(bool is64) = 0;
         static Ptr makeDecoderImpl(Architecture a);
 
     protected:
-      
-        virtual bool decodeOperands(const Instruction* insn_to_complete) = 0;
-
-        virtual void decodeOpcode(InstructionDecoder::buffer&) = 0;
       
         virtual Expression::Ptr makeAddExpression(Expression::Ptr lhs, Expression::Ptr rhs, Result_Type resultType);
         virtual Expression::Ptr makeMultiplyExpression(Expression::Ptr lhs, Expression::Ptr rhs, Result_Type resultType);
@@ -78,14 +70,12 @@ class InstructionDecoderImpl
         virtual Expression::Ptr makeRegisterExpression(MachRegister reg, unsigned int start , unsigned int end);
         virtual Expression::Ptr makeMaskRegisterExpression(MachRegister reg);
         virtual Expression::Ptr makeRegisterExpression(MachRegister reg, Result_Type extendFrom);
-        virtual Result_Type makeSizeType(unsigned int opType) = 0;
+
         // added to support ternary value 
         virtual Expression::Ptr makeTernaryExpression(Expression::Ptr cond, Expression::Ptr first, Expression::Ptr second, Result_Type resultType);
-        //Instruction* makeInstruction(entryID opcode, const char* mnem, unsigned int decodedSize,const unsigned char* raw);
         boost::shared_ptr<Instruction> makeInstruction(entryID opcode, const char* mnem, unsigned int decodedSize,
                                      const unsigned char* raw);
-      
-    protected:
+
         Operation m_Operation;
         Architecture m_Arch;
 
@@ -94,4 +84,4 @@ class InstructionDecoderImpl
 }
 }
 
-#endif //!defined(INSTRUCTION_DECODER_IMPL_H)
+#endif

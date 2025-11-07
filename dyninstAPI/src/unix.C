@@ -38,7 +38,8 @@
 #include "dynThread.h"
 #include "function.h"
 #include "binaryEdit.h"
-#include "common/src/pathName.h"
+#include "common/src/dyninst_filesystem.h"
+#include <sys/stat.h>
 
 #include <sstream>
 
@@ -467,7 +468,7 @@ bool PCProcess::hasPassedMain()
       return true;
    }
 
-   std::string derefPath = resolve_file_path(path);
+   std::string derefPath = Dyninst::filesystem::canonicalize(path);
 
    // Search for the dynamic linker in the loaded libraries
    const LibraryPool &libraries = pcProc_->libraries();
@@ -636,7 +637,7 @@ mapped_object *BinaryEdit::openResolvedLibraryName(std::string filename,
       if (Symtab::openFile(singleObject, path)) {
         std::unique_ptr<Symtab> obj{singleObject};
         if (auto temp = is_compatible(path, {})) {
-          if (obj->getObjectType() == obj_SharedLib || obj->getObjectType() == obj_Executable) {
+          if (obj->isSharedLibrary() || obj->isExecutable()) {
             startup_printf(
                 "%s[%d]: cannot load dynamic object(%s) when rewriting a static binary\n", FILE__,
                 __LINE__, path.c_str());
@@ -780,7 +781,7 @@ void BinaryEdit::makeInitAndFiniIfNeeded()
 
     // Disable this for .o's and static binaries
     if( linkedFile->isStaticBinary() || 
-        linkedFile->getObjectType() == obj_RelocatableFile ) 
+        linkedFile->isUnlinkedObjectFile() )
     {
         return;
     }
@@ -802,7 +803,7 @@ void BinaryEdit::makeInitAndFiniIfNeeded()
         {
             unsigned char* emptyFunction = NULL;
             int emptyFuncSize = 0;
-#if defined(DYNINST_HOST_ARCH_X86) || defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86) || defined(DYNINST_CODEGEN_ARCH_X86_64)
             static unsigned char empty_32[] = { 0x55, 0x89, 0xe5, 0xc9, 0xc3 };
             static unsigned char empty_64[] = { 0x55, 0x48, 0x89, 0xe5, 0xc9, 0xc3 };
             if(linkedFile->getAddressWidth() == 8)
@@ -815,11 +816,11 @@ void BinaryEdit::makeInitAndFiniIfNeeded()
                 emptyFunction = empty_32;
                 emptyFuncSize = 5;
             }
-#elif defined(DYNINST_HOST_ARCH_POWER)
+#elif defined(DYNINST_CODEGEN_ARCH_POWER)
             static unsigned empty[] = {0x4e800020};
             emptyFunction = (unsigned char*) empty;
             emptyFuncSize = 4;
-#endif //defined(DYNINST_HOST_ARCH_X86) || defined(DYNINST_HOST_ARCH_X86_64)
+#endif //defined(DYNINST_CODEGEN_ARCH_X86) || defined(DYNINST_CODEGEN_ARCH_X86_64)
             linkedFile->addRegion(highWaterMark_, (void*)(emptyFunction), emptyFuncSize, ".init.dyninst",
                                   Dyninst::SymtabAPI::Region::RT_TEXT, true);
             highWaterMark_ += emptyFuncSize;
@@ -849,7 +850,7 @@ void BinaryEdit::makeInitAndFiniIfNeeded()
         {
             unsigned char* emptyFunction = NULL;
             int emptyFuncSize = 0;
-#if defined(DYNINST_HOST_ARCH_X86) || defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86) || defined(DYNINST_CODEGEN_ARCH_X86_64)
             static unsigned char empty_32[] = { 0x55, 0x89, 0xe5, 0xc9, 0xc3 };
             static unsigned char empty_64[] = { 0x55, 0x48, 0x89, 0xe5, 0xc9, 0xc3 };
             if(linkedFile->getAddressWidth() == 8)
@@ -863,12 +864,12 @@ void BinaryEdit::makeInitAndFiniIfNeeded()
                 emptyFuncSize = 5;
             }
 
-#elif defined(DYNINST_HOST_ARCH_POWER)
+#elif defined(DYNINST_CODEGEN_ARCH_POWER)
             static unsigned empty[] = {0x4e800020};
             emptyFunction = (unsigned char*) empty;
             emptyFuncSize = 4;
 
-#elif defined(DYNINST_HOST_ARCH_AARCH64)
+#elif defined(DYNINST_CODEGEN_ARCH_AARCH64)
             static unsigned char empty[] = { 
                 0xfd, 0x7b, 0xbf, 0xa9, 
                 0xfd, 0x03, 0x00, 0x91, 
@@ -876,7 +877,7 @@ void BinaryEdit::makeInitAndFiniIfNeeded()
                 0xc0, 0x03, 0x5f, 0xd6};
             emptyFunction = empty;
             emptyFuncSize = 16;
-#endif //defined(DYNINST_HOST_ARCH_X86) || defined(DYNINST_HOST_ARCH_X86_64)
+#endif //defined(DYNINST_CODEGEN_ARCH_X86) || defined(DYNINST_CODEGEN_ARCH_X86_64)
 
             linkedFile->addRegion(highWaterMark_, (void*)(emptyFunction), emptyFuncSize, ".fini.dyninst",
                                   Dyninst::SymtabAPI::Region::RT_TEXT, true);

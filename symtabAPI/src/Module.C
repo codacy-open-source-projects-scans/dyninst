@@ -43,7 +43,7 @@
 #include "symutil.h"
 #include "annotations.h"
 
-#include "common/src/pathName.h"
+#include "common/src/dyninst_filesystem.h"
 #include "Object.h"
 #include <boost/foreach.hpp>
 #include <algorithm>
@@ -126,7 +126,7 @@ supportedLanguages Module::language() const
 }
 
 bool Module::getAddressRanges(std::vector<AddressRange >&ranges_,
-      std::string lineSource, unsigned int lineNo)
+      std::string const& lineSource, unsigned int lineNo)
 {
    unsigned int originalSize = ranges_.size();
 
@@ -223,7 +223,7 @@ typeCollection *Module::getModuleTypesPrivate()
   return typeInfo_;
 }
 
-bool Module::findType(boost::shared_ptr<Type> &type, std::string name)
+bool Module::findType(boost::shared_ptr<Type> &type, std::string const& name)
 {
 	typeCollection *tc = getModuleTypes();
 	if (!tc) return false;
@@ -236,7 +236,7 @@ bool Module::findType(boost::shared_ptr<Type> &type, std::string name)
    return true;
 }
 
-bool Module::findVariableType(boost::shared_ptr<Type> &type, std::string name)
+bool Module::findVariableType(boost::shared_ptr<Type> &type, std::string const& name)
 {
 	typeCollection *tc = getModuleTypes();
 	if (!tc) return false;
@@ -263,7 +263,7 @@ LineInformation *Module::getLineInformation()
   return lineInfo_;
 }
 
-bool Module::findLocalVariable(std::vector<localVar *>&vars, std::string name)
+bool Module::findLocalVariable(std::vector<localVar *>&vars, std::string const& name)
 {
 	std::vector<Function *>mod_funcs;
 
@@ -290,7 +290,7 @@ Module::Module(supportedLanguages lang, Offset adr,
    objectLevelLineInfo(false),
    lineInfo_(NULL),
    typeInfo_(NULL),
-   fileName_(fullNm),
+   fileName_(std::move(fullNm)),
    compDir_(""),
    language_(lang),
    addr_(adr),
@@ -334,7 +334,7 @@ Module::~Module()
 
 bool Module::isShared() const
 {
-   return exec_->getObjectType() == obj_SharedLib;
+   return exec_->getObject()->isSharedLibrary();
 }
 
 bool Module::getAllSymbolsByType(std::vector<Symbol *> &found, Symbol::SymbolType sType)
@@ -402,7 +402,7 @@ Offset Module::addr() const
 
 bool Module::setDefaultNamespacePrefix(string str)
 {
-    return exec_->setDefaultNamespacePrefix(str);
+    return exec_->setDefaultNamespacePrefix(std::move(str));
 }
 
 bool Module::findVariablesByOffset(std::vector<Variable *> &ret, const Offset offset)

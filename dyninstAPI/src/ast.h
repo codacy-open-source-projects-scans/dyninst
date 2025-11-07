@@ -53,8 +53,6 @@
 // The great experiment: boost shared_ptr libraries
 #include "BPatch_type.h"
 
-#include "arch-forward-decl.h" // instruction
-
 class AddressSpace;
 class instPoint;
 class func_instance;
@@ -114,8 +112,6 @@ public:
 	};
 
 	int condLevel;
-	
-	static unsigned astHash(AstNode * const &ast);
 
   regTracker_t() : condLevel(0) {}
 

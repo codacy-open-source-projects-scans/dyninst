@@ -45,19 +45,13 @@ namespace Dyninst { namespace InstructionAPI {
   public:
     InstructionDecoder_power(Architecture a);
     virtual ~InstructionDecoder_power();
-    virtual void decodeOpcode(InstructionDecoder::buffer& b);
     virtual Instruction decode(InstructionDecoder::buffer& b);
 
-    virtual void setMode(bool) {}
-
-    virtual bool decodeOperands(const Instruction* insn_to_complete);
-    virtual void doDelayedDecode(const Instruction* insn_to_complete);
     static bool foundDoubleHummerInsn;
     static bool foundQuadInsn;
     using InstructionDecoderImpl::makeRegisterExpression;
 
   private:
-    virtual Result_Type makeSizeType(unsigned int opType);
     Expression::Ptr makeMemRefIndex(Result_Type size);
     Expression::Ptr makeMemRefNonIndex(Result_Type size);
     Expression::Ptr makeRAExpr();
@@ -229,6 +223,8 @@ namespace Dyninst { namespace InstructionAPI {
     const power_entry& extended_op_63_583();
     const power_entry& extended_op_63_804();
     const power_entry& extended_op_63_836();
+
+    bool decodeOperands(const Instruction* insn_to_complete);
 
     template <int start, int end> int field(unsigned int raw) {
       return (raw >> (31 - (end)) & (0xFFFFFFFF >> (31 - (end - start))));

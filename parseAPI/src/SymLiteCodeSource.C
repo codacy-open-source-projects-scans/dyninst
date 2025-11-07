@@ -40,7 +40,6 @@
 
 #include "SymLiteCodeSource.h"
 #include "debug_parse.h"
-#include "util.h"
 
 #include "symlite/h/SymLite-elf.h"
 
@@ -201,7 +200,7 @@ SymReaderCodeRegion::length() const
 SymReaderCodeSource::~SymReaderCodeSource()
 {
     _have_stats = false;
-    free(stats_parse);
+    delete stats_parse;
     if(owns_symtab && _symtab)
       getSymReaderFactory()->closeSymbolReader(_symtab);
 }

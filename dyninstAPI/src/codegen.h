@@ -36,18 +36,17 @@
 #include <map>
 #include "dyntypes.h"
 #include "dyn_register.h"
-#include "common/src/arch.h"
 #include "dyninstAPI/src/patch.h"
 
-#if defined(DYNINST_HOST_ARCH_POWER)
+#if defined(DYNINST_CODEGEN_ARCH_POWER)
 #include "codegen-power.h"
 using namespace NS_power;
 #elif defined(i386_unknown_nt4_0) \
-   || defined(DYNINST_HOST_ARCH_X86)           \
-   || defined(DYNINST_HOST_ARCH_X86_64)
+   || defined(DYNINST_CODEGEN_ARCH_X86)           \
+   || defined(DYNINST_CODEGEN_ARCH_X86_64)
 #include "codegen-x86.h"
 using namespace NS_x86;
-#elif defined(DYNINST_HOST_ARCH_AARCH64)
+#elif defined(DYNINST_CODEGEN_ARCH_AARCH64)
 #include "codegen-aarch64.h"
 using namespace NS_aarch64;
 #else
@@ -55,9 +54,11 @@ using namespace NS_aarch64;
 #endif
 
 #include "bitArray.h"
-#include "pcrel.h"
 
-#include "arch-forward-decl.h" // instruction
+// For platforms that require bit-twiddling. These should go away in the future.
+#define GET_PTR(insn, gen) codeBuf_t *insn = (codeBuf_t *)(gen).cur_ptr()
+#define SET_PTR(insn, gen) (gen).update(insn)
+#define REGET_PTR(insn, gen) insn = (codeBuf_t *)(gen).cur_ptr()
 
 //hateful windows.h
 #if defined(_MSC_VER)
@@ -70,7 +71,6 @@ class registerSpace;
 class regTracker_t;
 class AstNode;
 class Emitter;
-class pcRelRegion;
 class func_instance;
 class PCThread;
 class baseTramp;
@@ -156,6 +156,8 @@ class codeGen {
     // based on a new pointer
     void update(codeBuf_t *ptr);
 
+    void update(void *ptr) { update(reinterpret_cast<codeBuf_t*>(ptr)); }
+
     // Set the offset at a particular location.
     void setIndex(codeBufIndex_t offset);
 
@@ -180,10 +182,6 @@ class codeGen {
     void fillRemaining(int fillType);
 
     std::string format() const;
-
-    //Add a new PCRelative region that should be generated after 
-    // addresses are fixed
-    void addPCRelRegion(pcRelRegion *reg);
 
     //Have each region generate code with this codeGen object being
     // placed at addr
@@ -291,7 +289,6 @@ class codeGen {
     bool modifiedStackFrame_;
 
     std::vector<relocPatch> patches_;
-    std::vector<pcRelRegion *> pcrels_;
 
     std::map<block_instance *, Extent> defensivePads_;
     std::map<baseTramp *, Dyninst::Address> instrumentation_;

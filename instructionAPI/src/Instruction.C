@@ -37,6 +37,7 @@
 #include "common/src/arch-x86.h"
 #include "dyninstversion.h"
 #include "interrupts.h"
+#include "entryIDs.h"
 
 #include <algorithm>
 #include <boost/iterator/indirect_iterator.hpp>
@@ -54,46 +55,72 @@ using namespace NS_x86;
 
 #include "ArchSpecificFormatters.h"
 
-#define DECODE_OPERANDS()                                                                          \
-  do {                                                                                             \
-    if(arch_decoded_from != Arch_cuda && arch_decoded_from != Arch_amdgpu_gfx908 &&                \
-       arch_decoded_from != Arch_amdgpu_gfx90a && arch_decoded_from != Arch_amdgpu_gfx940 &&       \
-       m_Operands.empty()) {                                                                       \
-      decodeOperands();                                                                            \
-    }                                                                                              \
-  } while(0)
-
 namespace Dyninst { namespace InstructionAPI {
+
+  namespace {
+    bool is_valid_mnemonic(Dyninst::Architecture arch, entryID id) {
+      switch(arch) {
+        case Arch_x86:
+        case Arch_x86_64:
+          return id != e_No_Entry;
+
+        case Arch_aarch64:
+          return id != aarch64_op_INVALID;
+
+        case Arch_ppc32:
+        case Arch_ppc64:
+          return id != power_op_INVALID;
+
+        case Arch_cuda:
+          return id != cuda_op_INVALID;
+
+        case Arch_intelGen9:
+          return id != intel_gpu_op_INVALID;
+
+        case Arch_amdgpu_gfx908:
+          return id != amdgpu_gfx908_op_INVALID;
+        case Arch_amdgpu_gfx90a:
+          return id != amdgpu_gfx90a_op_INVALID;
+        case Arch_amdgpu_gfx940:
+          return id != amdgpu_gfx940_op_INVALID;
+
+        case Arch_riscv64:
+          return id != riscv64_op_INVALID;
+
+        case Arch_none:
+        case Arch_aarch32:
+          return false;
+      }
+      return false;
+    }
+  }
 
   DYNINST_EXPORT Instruction::Instruction(Operation what, size_t size, const unsigned char* raw,
                                           Dyninst::Architecture arch)
-      : m_InsnOp(what), m_Valid(what.getID() != e_No_Entry), arch_decoded_from(arch),
+      : m_InsnOp(what), m_Valid(is_valid_mnemonic(arch, what.getID())), arch_decoded_from(arch),
         formatter(&ArchSpecificFormatter::getFormatter(arch)) {
     copyRaw(size, raw);
   }
 
   void Instruction::copyRaw(size_t size, const unsigned char* raw) {
+    if(m_size > sizeof(m_RawInsn.small_insn)) {
+        delete[] m_RawInsn.large_insn; 
+    }
+    m_size = 0;
+    m_RawInsn.small_insn = 0;
     if(raw) {
       m_size = size;
-      m_RawInsn.small_insn = 0;
       if(size <= sizeof(m_RawInsn.small_insn)) {
         memcpy(&m_RawInsn.small_insn, raw, size);
       } else {
         m_RawInsn.large_insn = new unsigned char[size];
         memcpy(m_RawInsn.large_insn, raw, size);
       }
-    } else {
-      m_size = 0;
-      m_RawInsn.small_insn = 0;
     }
   }
 
-  void Instruction::decodeOperands() const {
-    if(!m_Valid)
-      return;
-    // m_Operands.reserve(5);
-    InstructionDecoder dec(ptr(), size(), arch_decoded_from);
-    dec.doDelayedDecode(this);
+  void Instruction::updateSize(const unsigned int new_size, const unsigned char * raw) {
+    copyRaw(new_size, raw);
   }
 
   DYNINST_EXPORT Instruction::Instruction()
@@ -154,12 +181,10 @@ namespace Dyninst { namespace InstructionAPI {
   DYNINST_EXPORT const Operation& Instruction::getOperation() const { return m_InsnOp; }
 
   std::vector<Operand> Instruction::getAllOperands() const {
-    DECODE_OPERANDS();
     return std::vector<Operand>(m_Operands.begin(), m_Operands.end());
   }
 
   std::vector<Operand> Instruction::getExplicitOperands() const {
-    DECODE_OPERANDS();
     std::vector<Operand> operands;
     for(auto const& o : m_Operands) {
       if(!o.isImplicit()) {
@@ -169,7 +194,6 @@ namespace Dyninst { namespace InstructionAPI {
     return operands;
   }
   std::vector<Operand> Instruction::getImplicitOperands() const {
-    DECODE_OPERANDS();
     std::vector<Operand> operands;
     for(auto const& o : m_Operands) {
       if(o.isImplicit()) {
@@ -186,8 +210,6 @@ namespace Dyninst { namespace InstructionAPI {
   }
 
   DYNINST_EXPORT std::vector<Operand> Instruction::getDisplayOrderedOperands() const {
-    DECODE_OPERANDS();
-
     auto operands = getExplicitOperands();
 
     if(formatter->operandPrintOrderReversed()) {
@@ -198,7 +220,6 @@ namespace Dyninst { namespace InstructionAPI {
   }
 
   DYNINST_EXPORT Operand Instruction::getOperand(int index) const {
-    DECODE_OPERANDS();
     if(index < 0 || index >= (int)(m_Operands.size())) {
       // Out of range = empty operand
       return Operand(Expression::Ptr(), false, false);
@@ -229,7 +250,6 @@ namespace Dyninst { namespace InstructionAPI {
   DYNINST_EXPORT size_t Instruction::size() const { return m_size; }
 
   DYNINST_EXPORT void Instruction::getReadSet(std::set<RegisterAST::Ptr>& regsRead) const {
-    DECODE_OPERANDS();
     for(std::list<Operand>::const_iterator curOperand = m_Operands.begin();
         curOperand != m_Operands.end(); ++curOperand) {
       curOperand->getReadSet(regsRead);
@@ -239,7 +259,6 @@ namespace Dyninst { namespace InstructionAPI {
   }
 
   DYNINST_EXPORT void Instruction::getWriteSet(std::set<RegisterAST::Ptr>& regsWritten) const {
-    DECODE_OPERANDS();
     for(std::list<Operand>::const_iterator curOperand = m_Operands.begin();
         curOperand != m_Operands.end(); ++curOperand) {
       curOperand->getWriteSet(regsWritten);
@@ -249,7 +268,6 @@ namespace Dyninst { namespace InstructionAPI {
   }
 
   DYNINST_EXPORT bool Instruction::isRead(Expression::Ptr candidate) const {
-    DECODE_OPERANDS();
     for(std::list<Operand>::const_iterator curOperand = m_Operands.begin();
         curOperand != m_Operands.end(); ++curOperand) {
       // Check if the candidate is read as an explicit operand
@@ -262,8 +280,6 @@ namespace Dyninst { namespace InstructionAPI {
   }
 
   DYNINST_EXPORT bool Instruction::isWritten(Expression::Ptr candidate) const {
-    DECODE_OPERANDS();
-
     for(std::list<Operand>::const_iterator curOperand = m_Operands.begin();
         curOperand != m_Operands.end(); ++curOperand) {
       if(curOperand->isWritten(candidate)) {
@@ -274,7 +290,6 @@ namespace Dyninst { namespace InstructionAPI {
   }
 
   DYNINST_EXPORT bool Instruction::readsMemory() const {
-    DECODE_OPERANDS();
     if(isPrefetch()) {
       return false;
     }
@@ -288,7 +303,6 @@ namespace Dyninst { namespace InstructionAPI {
   }
 
   DYNINST_EXPORT bool Instruction::writesMemory() const {
-    DECODE_OPERANDS();
     for(std::list<Operand>::const_iterator curOperand = m_Operands.begin();
         curOperand != m_Operands.end(); ++curOperand) {
       if(curOperand->writesMemory()) {
@@ -300,7 +314,6 @@ namespace Dyninst { namespace InstructionAPI {
 
   DYNINST_EXPORT void
   Instruction::getMemoryReadOperands(std::set<Expression::Ptr>& memAccessors) const {
-    DECODE_OPERANDS();
     for(std::list<Operand>::const_iterator curOperand = m_Operands.begin();
         curOperand != m_Operands.end(); ++curOperand) {
       curOperand->addEffectiveReadAddresses(memAccessors);
@@ -311,7 +324,6 @@ namespace Dyninst { namespace InstructionAPI {
 
   DYNINST_EXPORT void
   Instruction::getMemoryWriteOperands(std::set<Expression::Ptr>& memAccessors) const {
-    DECODE_OPERANDS();
     for(std::list<Operand>::const_iterator curOperand = m_Operands.begin();
         curOperand != m_Operands.end(); ++curOperand) {
       curOperand->addEffectiveWriteAddresses(memAccessors);
@@ -321,7 +333,6 @@ namespace Dyninst { namespace InstructionAPI {
   }
 
   DYNINST_EXPORT Operand Instruction::getPredicateOperand() const {
-    DECODE_OPERANDS();
     for(auto const& op : m_Operands) {
       if(op.isTruePredicate() || op.isFalsePredicate()) {
         return op;
@@ -332,7 +343,6 @@ namespace Dyninst { namespace InstructionAPI {
   }
 
   DYNINST_EXPORT bool Instruction::hasPredicateOperand() const {
-    DECODE_OPERANDS();
     for(auto const& op : m_Operands) {
       if(op.isTruePredicate() || op.isFalsePredicate()) {
         return true;
@@ -350,7 +360,6 @@ namespace Dyninst { namespace InstructionAPI {
     if(getCategory() == c_NoCategory || isCompare() || isPrefetch()) {
       return Expression::Ptr();
     }
-    DECODE_OPERANDS();
     if(m_Successors.empty()) {
       return Expression::Ptr();
     }
@@ -366,7 +375,6 @@ namespace Dyninst { namespace InstructionAPI {
       return "ERROR_NO_ARCH_SET_FOR_INSTRUCTION";
     }
 
-    DECODE_OPERANDS();
     // remove this once ArchSpecificFormatter is extended for all architectures
 
     std::string opstr = m_InsnOp.format();
@@ -421,7 +429,6 @@ namespace Dyninst { namespace InstructionAPI {
       case e_js:
       case e_je: return true;
       default: {
-        DECODE_OPERANDS();
         for(cftConstIter targ = m_Successors.begin(); targ != m_Successors.end(); ++targ) {
           if(targ->isFallthrough)
             return true;
@@ -433,7 +440,7 @@ namespace Dyninst { namespace InstructionAPI {
     return false;
   }
 
-  DYNINST_EXPORT bool Instruction::isLegalInsn() const { return (m_InsnOp.getID() != e_No_Entry); }
+  DYNINST_EXPORT bool Instruction::isLegalInsn() const { return m_Valid; }
 
   DYNINST_EXPORT Architecture Instruction::getArch() const { return arch_decoded_from; }
 
@@ -442,15 +449,17 @@ namespace Dyninst { namespace InstructionAPI {
       return c_VectorInsn;
     InsnCategory c = entryToCategory(m_InsnOp.getID());
     if(c == c_BranchInsn && (arch_decoded_from == Arch_ppc32 || arch_decoded_from == Arch_ppc64)) {
-      DECODE_OPERANDS();
       for(cftConstIter cft = cft_begin(); cft != cft_end(); ++cft) {
         if(cft->isCall) {
           return c_CallInsn;
         }
       }
-      if(m_InsnOp.getID() == power_op_bclr) {
-        return c_ReturnInsn;
+    }
+    if(m_InsnOp.getID() == power_op_bclr) {
+      if(this->allowsFallThrough()) {
+        return c_BranchInsn;
       }
+      return c_ReturnInsn;
     }
     if(isSoftwareInterrupt(*this)) {
       return c_InterruptInsn;

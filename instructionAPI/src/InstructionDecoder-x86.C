@@ -128,10 +128,7 @@ namespace Dyninst { namespace InstructionAPI {
 
   DYNINST_EXPORT InstructionDecoder_x86::InstructionDecoder_x86(Architecture a)
       : InstructionDecoderImpl(a), locs(NULL), decodedInstruction(NULL), sizePrefixPresent(false),
-        addrSizePrefixPresent(false) {
-    if(a == Arch_x86_64)
-      InstructionDecoder_x86::setMode(true);
-  }
+        addrSizePrefixPresent(false), is64BitMode{a == Arch_x86_64} {}
 
   DYNINST_EXPORT InstructionDecoder_x86::~InstructionDecoder_x86() {
     free(decodedInstruction);
@@ -139,10 +136,6 @@ namespace Dyninst { namespace InstructionAPI {
   }
 
   static const unsigned char modrm_use_sib = 4;
-
-  DYNINST_EXPORT void InstructionDecoder_x86::setMode(bool is64) {
-    InstructionDecoder_x86::is64BitMode = is64;
-  }
 
   Expression::Ptr InstructionDecoder_x86::makeSIBExpression(const InstructionDecoder::buffer& b) {
     unsigned scale;
@@ -1548,7 +1541,7 @@ namespace Dyninst { namespace InstructionAPI {
       case am_reg: {
         MachRegister r(optype);
         int size = r.size();
-        if((m_Arch == Arch_x86_64) && (r.regClass() == (unsigned int)x86::GPR) && (size == 4)) {
+        if((m_Arch == Arch_x86_64) && r.isGeneralPurpose() && (size == 4)) {
           int reg_size = isDefault64Insn() ? op_q : op_v;
           if(sizePrefixPresent) {
             reg_size = op_w;
@@ -1573,7 +1566,7 @@ namespace Dyninst { namespace InstructionAPI {
             unsigned int reg_id = (opcode_byte & 0x07);
             if(locs->rex_b) {
               // FP stack registers are not affected by the rex_b bit in AM_REG.
-              if(r.regClass() == (unsigned)x86::GPR) {
+              if(r.isGeneralPurpose()) {
                 int reg_op_type = op_d;
                 switch(size) {
                   case 1:
@@ -1598,7 +1591,7 @@ namespace Dyninst { namespace InstructionAPI {
             }
           }
 
-          if(sizePrefixPresent && (r.regClass() == (unsigned int)x86::GPR) && r.size() >= 4) {
+          if(sizePrefixPresent && r.isGeneralPurpose() && r.size() >= 4) {
             r = MachRegister((r.val() & ~x86::FULL) | x86::W_REG);
             assert(r.name() != "<INVALID_REG>");
           }
@@ -1831,14 +1824,13 @@ namespace Dyninst { namespace InstructionAPI {
     decodeOpcode(b);
     unsigned int decodedSize = b.start - start;
 
-    return Instruction(m_Operation, decodedSize, start, m_Arch);
-  }
+    auto insn = Instruction(m_Operation, decodedSize, start, m_Arch);
 
-  void InstructionDecoder_x86::doDelayedDecode(const Instruction* insn_to_complete) {
-    InstructionDecoder::buffer b(insn_to_complete->ptr(), insn_to_complete->size());
-    // insn_to_complete->m_Operands.reserve(4);
-    doIA32Decode(b);
-    decodeOperands(insn_to_complete);
+    if(insn.isValid()) {
+      decodeOperands(&insn);
+    }
+
+    return insn;
   }
 
 }}

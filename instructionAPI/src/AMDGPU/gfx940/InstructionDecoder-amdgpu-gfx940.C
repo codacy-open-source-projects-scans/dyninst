@@ -54,10 +54,6 @@ namespace Dyninst {
         }
 
         using namespace std;
-        Result_Type InstructionDecoder_amdgpu_gfx940::makeSizeType(unsigned int) {
-            assert(0); //not implemented
-            return u32;
-        }
 
         // ****************
         // decoding opcodes
@@ -92,12 +88,6 @@ namespace Dyninst {
         Expression::Ptr InstructionDecoder_amdgpu_gfx940::makeFallThroughExpr() {
             // TODO: while s_call_B64 is always 4 bytes, it is not clear whether all instructions that has a fall through branch are 4 bytes long
             return makeAddExpression(makePCExpr(), Immediate::makeImmediate(Result(u64, unsign_extend64(3, 4))), u64);
-        }
-
-
-        bool InstructionDecoder_amdgpu_gfx940::decodeOperands(const Instruction *) {
-            assert(0 && "decodeOperands deprecated for amdgpu");
-            return true;
         }
 
         Expression::Ptr InstructionDecoder_amdgpu_gfx940::decodeSGPRorM0(unsigned int offset){
@@ -209,11 +199,6 @@ namespace Dyninst {
 
             insn_long = ( ((uint64_t) insn_high) << 32) | insn;
         }
-        void InstructionDecoder_amdgpu_gfx940::decodeOpcode(InstructionDecoder::buffer &b) {
-            setupInsnWord(b);
-            mainDecode();
-            b.start += insn_in_progress->size();
-        }
 
         void InstructionDecoder_amdgpu_gfx940::debug_instr(){
             //	cout << "decoded instruction " <<  insn_in_progress->getOperation().mnemonic << " " << std::hex << insn_long << " insn_family = " << instr_family << "  length = " <<  insn_in_progress->size()<< endl << endl;
@@ -226,14 +211,6 @@ namespace Dyninst {
             return *insn_in_progress;
         }
 
-        void InstructionDecoder_amdgpu_gfx940::doDelayedDecode(const Instruction *insn_to_complete) {
-
-            InstructionDecoder::buffer b(insn_to_complete->ptr(), insn_to_complete->size());
-            setupInsnWord(b);
-            mainDecode();
-            Instruction* iptr = const_cast<Instruction*>(insn_to_complete);
-            *iptr = *(insn_in_progress.get());
-        }
     }
 }
 

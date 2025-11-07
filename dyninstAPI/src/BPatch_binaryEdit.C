@@ -33,7 +33,6 @@
 #include "binaryEdit.h"
 #include "addressSpace.h"
 #include "inst.h"
-#include "instP.h"
 #include "instPoint.h"
 #include "function.h" // func_instance
 #include "codeRange.h"
@@ -81,14 +80,9 @@ BPatch_binaryEdit::BPatch_binaryEdit(const char *path, bool openDependencies) :
 {
   pendingInsertions = new BPatch_Vector<batchInsertionRecord *>;
 
-  std::vector<std::string> argv_vec;
-  std::vector<std::string> envp_vec;
-
-  std::string directoryName = "";
-
   startup_printf("[%s:%d] - Opening original file %s\n",
                  FILE__, __LINE__, path);
-  origBinEdit = BinaryEdit::openFile(std::string(path));
+  origBinEdit = BinaryEdit::openFile(path ? path : "");
 
   if (!origBinEdit){
      startup_printf("[%s:%d] - Creation error opening %s\n",
@@ -194,14 +188,6 @@ BPatch_binaryEdit::~BPatch_binaryEdit()
 bool BPatch_binaryEdit::writeFile(const char * outFile)
 {
     assert(pendingInsertions);
-
-    // This should be a parameter...
-    //bool atomic = false;
-
-    // Define up here so we don't have gotos causing issues
-    std::set<func_instance *> instrumentedFunctions;
-
-    //bool err = false;
 
     // Iterate over our AddressSpaces, triggering relocation
     // in each one.

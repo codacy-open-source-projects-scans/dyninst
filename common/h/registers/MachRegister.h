@@ -64,6 +64,13 @@ namespace Dyninst {
     // Return the category of the MachRegister
     unsigned int regClass() const;
 
+    /* Returns the architecture-specific ID for the register's length
+     *
+     *  This is _not_ the number of bytes the register contains. For
+     *  that, use `size()`.
+     */
+    int32_t getLengthID() const;
+
     static MachRegister getPC(Dyninst::Architecture arch);
     static MachRegister getReturnAddress(Dyninst::Architecture arch);
     static MachRegister getFramePointer(Dyninst::Architecture arch);
@@ -81,14 +88,42 @@ namespace Dyninst {
     bool isFlag() const;
     bool isZeroFlag() const;
 
-    void getROSERegister(int& c, int& n, int& p);
+    /* Checks if this is a general-purpose register
+     *
+     *  General-purpose registers do not have a specific data
+     *  type or use. For example, they might be used for both
+     *  integer arithmetic and memory addressing.
+     */
+    bool isGeneralPurpose() const;
 
-    static MachRegister DwarfEncToReg(int encoding, Dyninst::Architecture arch);
-    static MachRegister getArchRegFromAbstractReg(MachRegister abstract,
-                                                  Dyninst::Architecture arch);
-    int getDwarfEnc() const;
+    /* Checks if this is a vector register
+     *
+     *  Vector registers are capable of performing operations
+     *  on multiple data values simultaneously.
+     *
+     *  NOTE: This includes any vector status/control registers.
+     */
+    bool isVector() const;
 
-    static MachRegister getArchReg(unsigned int regNum, Dyninst::Architecture arch);
+    /* Checks if this is a control/status register
+     *
+     *  Control registers influence the execution behavior of the Processing
+     *  Unit. For example, enabling/disabling floating-point exceptions.
+     *
+     *  Status registers report behaviors of executed instructions.
+     *  For example, if a floating-point exception occurred.
+     *
+     *  NOTE: FLAG registers are not considered to be status registers.
+     *        Use `isFlag()` for that.
+     */
+    bool isControlStatus() const;
+
+    /* Checks if this register operates on floating-point data
+     *
+     *  NOTE: This includes any floating-point status/control registers.
+     */
+    bool isFloatingPoint() const;
+
     static std::vector<MachRegister> const& getAllRegistersForArch(Dyninst::Architecture);
   };
 }

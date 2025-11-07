@@ -55,16 +55,10 @@ namespace Dyninst { namespace InstructionAPI {
   public:
     DYNINST_EXPORT virtual Instruction decode(InstructionDecoder::buffer& b);
 
-    DYNINST_EXPORT virtual void setMode(bool is64);
-    virtual void doDelayedDecode(const Instruction* insn_to_complete);
-
   protected:
-    virtual bool decodeOperands(const Instruction* insn_to_complete);
-
     bool decodeOneOperand(const InstructionDecoder::buffer& b, const NS_x86::ia32_operand& operand,
                           int& imm_index, const Instruction* insn_to_complete, bool isRead,
                           bool isWritten, bool isImplicit);
-    virtual void decodeOpcode(InstructionDecoder::buffer& b);
 
     Expression::Ptr makeSIBExpression(const InstructionDecoder::buffer& b);
     Expression::Ptr makeModRMExpression(const InstructionDecoder::buffer& b, unsigned int opType);
@@ -73,11 +67,14 @@ namespace Dyninst { namespace InstructionAPI {
                                 bool isExtendedReg = false);
     Expression::Ptr decodeImmediate(unsigned int opType, const unsigned char* immStart,
                                     bool isSigned = false);
-    virtual Result_Type makeSizeType(unsigned int opType);
+    Result_Type makeSizeType(unsigned int opType);
 
   private:
     void doIA32Decode(InstructionDecoder::buffer& b);
     bool isDefault64Insn();
+    void decodeOpcode(InstructionDecoder::buffer&);
+
+    bool decodeOperands(const Instruction* insn_to_complete);
 
     ia32_locations* locs;
     NS_x86::ia32_instruction* decodedInstruction;

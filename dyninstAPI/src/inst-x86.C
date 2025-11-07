@@ -41,9 +41,7 @@
 #include <unordered_map>
 #include "dyninstAPI/src/image.h"
 #include "dyninstAPI/src/inst.h"
-#include "dyninstAPI/src/instP.h"
 #include "dyninstAPI/src/ast.h"
-#include "dyninstAPI/src/util.h"
 #include "common/src/stats.h"
 #include "dyninstAPI/src/os.h"
 #include "dyninstAPI/src/debug.h"
@@ -60,7 +58,6 @@
 
 #include "dyninstAPI/src/registerSpace.h"
 
-#include "dyninstAPI/src/instP.h" // class returnInstance
 #include "mapped_module.h"
 #include "dyninstAPI/h/BPatch_memoryAccess_NP.h"
 #include "IAPI_to_AST.h"
@@ -199,7 +196,7 @@ void registerSpace::initialize32() {
 
 }
 
-#if defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86_64)
 void registerSpace::initialize64() {
     static bool done = false;
     if (done) return;
@@ -540,7 +537,7 @@ void registerSpace::initialize()
     
 
     initialize32();
-#if defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86_64)
     initialize64();
 #endif
 }
@@ -569,8 +566,14 @@ int cpuidCall() {
 }
 #endif
 
-#if !defined(x86_64_unknown_linux2_4)              \
- && !(defined(os_freebsd) && defined(DYNINST_HOST_ARCH_X86_64))
+#if defined(x86_64_unknown_linux2_4)              \
+ || defined(os_freebsd) || defined(DYNINST_HOST_ARCH_X86_64) \
+ || !defined(DYNINST_HOST_ARCH_X86) || !defined(DYNINST_CODEGEN_ARCH_X86)
+bool xmmCapable()
+{
+  return true;
+}
+#else
 bool xmmCapable()
 {
   int features = cpuidCall();
@@ -580,11 +583,6 @@ bool xmmCapable()
     return true;
   else
     return false;
-}
-#else
-bool xmmCapable()
-{
-  return true;
 }
 #endif
 
@@ -1257,11 +1255,6 @@ unsigned char jccOpcodeFromRelOp(unsigned op, bool s)
    return 0x0;
 }
 
-Dyninst::Register emitFuncCall(opCode, codeGen &, std::vector<AstNodePtr> &, bool, Address) {
-	assert(0);
-	return 0;
-}
-
 // this function just multiplexes between the 32-bit and 64-bit versions
 Dyninst::Register emitFuncCall(opCode op,
                       codeGen &gen,
@@ -1297,13 +1290,11 @@ bool EmitterIA32::clobberAllFuncCall( registerSpace *rs,
      False - No FP Writes
   */
 
-  stats_codegen.startTimer(CODEGEN_LIVENESS_TIMER);  
   if (callee->ifunc()->writesFPRs()) {
       for (unsigned i = 0; i < rs->FPRs().size(); i++) {
           rs->FPRs()[i]->beenUsed = true;
       }
   }
-  stats_codegen.stopTimer(CODEGEN_LIVENESS_TIMER);
   return true;
 }
 
@@ -2273,13 +2264,6 @@ bool func_instance::setReturnValue(int val)
     return proc()->writeTextSpace((void *) addr(), gen.used(), gen.start_ptr());
 }
 
-unsigned saveRestoreRegistersInBaseTramp(AddressSpace * /*proc*/, 
-                                         baseTramp * /*bt*/,
-                                         registerSpace * /*rs*/)
-{
-  return 0;
-}
-
 /**
  * Fills in an indirect function pointer at 'addr' to point to 'f'.
  **/
@@ -2309,7 +2293,7 @@ Emitter *AddressSpace::getEmitter()
    static EmitterIA32Dyn emitter32Dyn;
    static EmitterIA32Stat emitter32Stat;
 
-#if defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86_64)
    static EmitterAMD64Dyn emitter64Dyn;
    static EmitterAMD64Stat emitter64Stat;
 
@@ -2332,7 +2316,7 @@ Emitter *AddressSpace::getEmitter()
    }
 }
 
-#if defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86_64)
 int registerSpace::framePointer() { 
    // Suppress warning (for compilers where it is a false positive)
    // The value of REGNUM_EBP and REGNUM_RBP are identical
@@ -2342,7 +2326,7 @@ int registerSpace::framePointer() {
 
    DYNINST_DIAGNOSTIC_END_SUPPRESS_DUPLICATED_BRANCHES
 }
-#elif defined(DYNINST_HOST_ARCH_X86)
+#elif defined(DYNINST_CODEGEN_ARCH_X86)
 int registerSpace::framePointer() { 
    return REGNUM_EBP; 
 }

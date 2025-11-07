@@ -28,35 +28,30 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-// Architecture include. Use this one instead of arch-<platform>
+// $Id: arch-x86.h,v 1.67 2008/10/28 18:42:39 bernat Exp $
+// x86 instruction declarations
 
-#if !defined(arch_h)
-#define arch_h
+#ifndef _ARCH_H
+#define _ARCH_H
 
+#include "dyntypes.h"
 #include <assert.h>
+#include <stdio.h>
+#include <set>
+#include <map>
 #include <vector>
+#include "entryIDs.h"
+#include "registers/MachRegister.h"
+#include "dyn_register.h"
 
-#if defined(DYNINST_HOST_ARCH_POWER)
-#include "arch-power.h"
-using namespace NS_power;
+namespace NS_common {
+#define MAX_IMM16 (32767)
+#define MIN_IMM16 (-32768)
+class instruction {
+  public:
+    instruction() = default;
+};
 
-#elif defined(i386_unknown_nt4_0) \
-   || defined(DYNINST_HOST_ARCH_X86)           \
-   || defined(DYNINST_HOST_ARCH_X86_64)
-#include "arch-x86.h"
-using namespace NS_x86;
-
-#elif defined(DYNINST_HOST_ARCH_AARCH64)
-#include "arch-aarch64.h"
-using namespace NS_aarch64;
-#else
-#error "unknown architecture"
-
+}
 #endif
 
-// For platforms that require bit-twiddling. These should go away in the future.
-#define GET_PTR(insn, gen) codeBuf_t *insn = (codeBuf_t *)(gen).cur_ptr()
-#define SET_PTR(insn, gen) (gen).update(insn)
-#define REGET_PTR(insn, gen) insn = (codeBuf_t *)(gen).cur_ptr()
-
-#endif

@@ -81,7 +81,7 @@ class RealRegister {
    int reg() const { return r; }
 };
 
-#if defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86_64)
 #include "inst-x86.h"
 #endif
 
@@ -463,7 +463,7 @@ class registerSpace {
     static bool hasXMM;  // for Intel architectures, XMM registers
 
  public:
-#if defined(DYNINST_HOST_ARCH_POWER)
+#if defined(DYNINST_CODEGEN_ARCH_POWER)
     typedef enum { r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12,
                    r13, r14, r15, r16, r17, r18, r19, r20, r21, r22, r23,
                    r24, r25, r26, r27, r28, r29, r30, r31,
@@ -478,10 +478,10 @@ class registerSpace {
     static unsigned SPR(Dyninst::Register x);
     int framePointer() { return r1; }
 #endif
-#if defined(DYNINST_HOST_ARCH_X86) || defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86) || defined(DYNINST_CODEGEN_ARCH_X86_64)
     int framePointer();
 #endif
-#if defined(DYNINST_HOST_ARCH_AARCH64)
+#if defined(DYNINST_CODEGEN_ARCH_AARCH64)
 //#warning "Not verified yet!"
 	//31 GPRs, 32 FPRs
     typedef enum { r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12,
@@ -492,7 +492,7 @@ class registerSpace {
                    fpr14, fpr15, fpr16, fpr17, fpr18, fpr19, fpr20,
                    fpr21, fpr22, fpr23, fpr24, fpr25, fpr26, fpr27,
                    fpr28, fpr29, fpr30, fpr31,
-                   lr, sp, pc, pstate, fpcr, fpsr, ignored } aarch64Registers_t;
+                   lr, sp, pc, nzcv, fpcr, fpsr, ignored } aarch64Registers_t;
     static unsigned GPR(Dyninst::Register x) { return x; }
     static unsigned FPR(Dyninst::Register x) { return x - fpr0; }
     int framePointer() { return r29; }

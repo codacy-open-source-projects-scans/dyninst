@@ -66,12 +66,11 @@ typedef enum {
 
 DYNINST_EXPORT const char *supportedLanguages2Str(supportedLanguages s);
 
-typedef enum {
-   obj_Unknown,
-   obj_SharedLib,
-   obj_Executable,
-   obj_RelocatableFile
-} ObjectType;
+enum class FileFormat {
+	Unknown,
+	ELF,
+	PE,
+};
 
 typedef enum { 
    Obj_Parsing = 0,

@@ -42,8 +42,8 @@
 #include "registerSpace.h"
 #include "mapped_object.h"
 #include "image.h"
-
-#include "common/src/pathName.h"
+#include "common/src/headers.h"
+#include "common/src/dyninst_filesystem.h"
 
 #include "PCErrors.h"
 #include <boost/tuple/tuple.hpp>
@@ -762,8 +762,8 @@ void PCProcess::findSignalHandler(mapped_object *obj) {
 void PCProcess::setMainFunction() {
     assert(!main_function_);
 
-    for (unsigned i = 0; i < NUMBER_OF_MAIN_POSSIBILITIES; i++) {
-        main_function_ = findOnlyOneFunction(main_function_names[i]);
+    for(char const* name : main_function_names()) {
+        main_function_ = findOnlyOneFunction(name);
         if (main_function_) {
            break;
         }

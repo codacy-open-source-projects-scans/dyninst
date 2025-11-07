@@ -37,7 +37,7 @@
 #include "InstructionCategories.h"
 #include "Operand.h"
 #include "Operation_impl.h"
-#include "util.h"
+#include "dyninst_visibility.h"
 
 #include <list>
 #include <set>
@@ -65,6 +65,8 @@ namespace Dyninst { namespace InstructionAPI {
     friend class InstructionDecoder_amdgpu_gfx908;
     friend class InstructionDecoder_amdgpu_gfx90a;
     friend class InstructionDecoder_amdgpu_gfx940;
+
+    static const unsigned int maxInstructionLength = 16;
 
     struct CFT {
       Expression::Ptr target;
@@ -140,6 +142,7 @@ namespace Dyninst { namespace InstructionAPI {
     DYNINST_EXPORT bool isInterrupt() const { return getCategory() == c_InterruptInsn; }
     DYNINST_EXPORT bool isVector() const { return getCategory() == c_VectorInsn; }
     DYNINST_EXPORT bool isGPUKernelExit() const { return getCategory() == c_GPUKernelExitInsn; }
+    DYNINST_EXPORT bool isSoftwareException() const { return isGPUKernelExit() || getCategory() == c_SoftwareExceptionInsn; }
 
     typedef std::list<CFT>::const_iterator cftConstIter;
     DYNINST_EXPORT cftConstIter cft_begin() const { return m_Successors.begin(); }
@@ -168,9 +171,8 @@ namespace Dyninst { namespace InstructionAPI {
     typedef boost::shared_ptr<Instruction> Ptr;
 
   private:
-    void updateSize(const unsigned int new_size) { m_size = new_size; }
+    void updateSize(const unsigned int new_size, const unsigned char * raw);
 
-    void decodeOperands() const;
     void addSuccessor(Expression::Ptr e, bool isCall, bool isIndirect, bool isConditional, bool isFallthrough,
                       bool isImplicit = false) const;
     void appendOperand(Expression::Ptr e, bool isRead, bool isWritten, bool isImplicit = false,
@@ -181,7 +183,7 @@ namespace Dyninst { namespace InstructionAPI {
     mutable Operation m_InsnOp;
     bool m_Valid;
     raw_insn_T m_RawInsn;
-    unsigned int m_size;
+    unsigned int m_size{};
     Architecture arch_decoded_from;
     mutable std::list<CFT> m_Successors;
     // formatter is a non-owning pointer to a singleton object

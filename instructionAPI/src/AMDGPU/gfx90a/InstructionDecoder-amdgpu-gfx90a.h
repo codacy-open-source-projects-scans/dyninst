@@ -58,19 +58,9 @@ namespace Dyninst {
 
             virtual ~InstructionDecoder_amdgpu_gfx90a() = default;
 
-            virtual void decodeOpcode(InstructionDecoder::buffer &b);
-
             // decode one instruction starting from b.start
             // will advance b.start whenver a instruction is successfully decoded
             virtual Instruction decode(InstructionDecoder::buffer &b);
-
-            virtual void setMode(bool)  { }
-
-            virtual bool decodeOperands(const Instruction *insn_to_complete);
-
-            bool decodeOperands(const amdgpu_gfx90a_insn_entry & insn_entry);
-
-            virtual void doDelayedDecode(const Instruction *insn_to_complete);
 
             static const std::array<std::string, 16> condNames;
             static MachRegister sysRegMap(unsigned int);
@@ -86,7 +76,6 @@ namespace Dyninst {
 
 
             private:
-            virtual Result_Type makeSizeType(unsigned int opType);
 
             bool is64Bit{};
 

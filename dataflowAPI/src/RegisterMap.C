@@ -30,6 +30,7 @@
 
 #include "dataflowAPI/src/RegisterMap.h"
 #include "dyn_regs.h"
+#include "dyntypes.h"
 
 // We use the singleton approach, rather than static construction, to ensure the
 // register maps are created correctly. In at least one case (Ubuntu 12.04) they
@@ -781,7 +782,8 @@ RegisterMap &machRegIndex_aarch64() {
      {aarch64::pc,  65},
      {aarch64::sp,  66},
      {aarch64::pstate, 67},
-     {aarch64::xzr, 68}};
+     {aarch64::xzr, 68},
+     {aarch64::nzcv, 69}};
    }
    return *mrmap;
 }
@@ -1410,7 +1412,9 @@ RegisterMap &machRegIndex_amdgpu_gfx908() {
      {amdgpu_gfx908::acc252,616},
      {amdgpu_gfx908::acc253,617},
      {amdgpu_gfx908::acc254,618},
-     {amdgpu_gfx908::acc255,619}};
+     {amdgpu_gfx908::acc255,619},
+     {amdgpu_gfx908::exec_lo,620},
+     {amdgpu_gfx908::exec_hi,621}};
     }
     return *mrmap;
 }
@@ -2040,7 +2044,9 @@ RegisterMap &machRegIndex_amdgpu_gfx90a() {
      {amdgpu_gfx90a::acc252,616},
      {amdgpu_gfx90a::acc253,617},
      {amdgpu_gfx90a::acc254,618},
-     {amdgpu_gfx90a::acc255,619}};
+     {amdgpu_gfx90a::acc255,619},
+     {amdgpu_gfx90a::exec_lo,620},
+     {amdgpu_gfx90a::exec_hi,621}};
     }
     return *mrmap;
 }
@@ -2669,7 +2675,9 @@ RegisterMap &machRegIndex_amdgpu_gfx940() {
      {amdgpu_gfx940::acc252,616},
      {amdgpu_gfx940::acc253,617},
      {amdgpu_gfx940::acc254,618},
-     {amdgpu_gfx940::acc255,619}};
+     {amdgpu_gfx940::acc255,619},
+     {amdgpu_gfx940::exec_lo,620},
+     {amdgpu_gfx940::exec_hi,621}};
     }
     return *mrmap;
 }

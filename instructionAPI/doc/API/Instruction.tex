@@ -48,6 +48,17 @@ enum InsnCategory {
 }
 \end{apient}
 
+\begin{apient}
+  static const unsigned int maxInstructionLength
+\end{apient}
+\apidesc{
+  The maximum number of bytes an instruction on \it{any} architecture
+  supported by Dyninst.
+  
+  The most common use is as the default instruction length for an
+  \code{InstructionDecoder}.  
+}
+
 
 \begin{apient}
 Instruction (Operation::Ptr what, 
@@ -320,9 +331,7 @@ bool isValid() const
 bool isLegalInsn() const
 \end{apient}
 \apidesc{
-    Returns \code{true} if this Instruction object represents a legal
-    instruction, as specified by the architecture used to decode this
-    instruction.
+    An alias for \code{isValid}.
 }
 
 \begin{apient}

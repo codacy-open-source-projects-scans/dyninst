@@ -8,10 +8,6 @@
 #include <boost/foreach.hpp>
 #include <mutex>
 
-// These are here temporarily until the classes in this file can be moved into rose::BinaryAnalysis
-using namespace rose;
-using namespace rose::BinaryAnalysis;
-
 std::ostream&
 operator<<(std::ostream &o, const RegisterDictionary &dict)
 {
@@ -187,14 +183,6 @@ RegisterDictionary::resize(const std::string &name, unsigned new_nbits) {
     insert(name, new_desc);
 }
 
-RegisterParts
-RegisterDictionary::getAllParts() const {
-    RegisterParts retval;
-    BOOST_FOREACH (const Entries::value_type &node, forward)
-        retval.insert(node.second);
-    return retval;
-}
-
 const RegisterDictionary::Entries &
 RegisterDictionary::get_registers() const {
     return forward;
@@ -262,7 +250,9 @@ RegisterDictionary::dictionary_amdgpu() {
         }
 
         regs->insert("pc_all", amdgpu_regclass_pc, 0, 0, 64);
-        regs->insert("src_scc", amdgpu_regclass_hwr, amdgpu_status, 0, 1);
+        regs->insert("src_scc",amdgpu_regclass_misc, amdgpu_src_scc, 0,  1);
+        regs->insert("vcc_lo", amdgpu_regclass_misc,  amdgpu_vcc_lo, 0, 32);
+        regs->insert("vcc_hi", amdgpu_regclass_misc,  amdgpu_vcc_hi, 0, 32);
     });
     return regs;
 }
@@ -317,6 +307,9 @@ RegisterDictionary::dictionary_armv8() {
 
         /* 64-bit program counter register */
         regs->insert("pc", armv8_regclass_pc, 0, 0, 64);
+
+        /* 64-bit link register */
+        regs->insert("lr", armv8_regclass_sp, 0, 0, 64);
 
         /* 32-bit pstate register and the four relevant flags.*/
         /* Each flag is added as a separate register for individual access. Only allowed minor is 0 (since there is only one pstate register);

@@ -36,20 +36,17 @@
 #include <fstream>
 
 #include "image.h"
-#include "common/src/arch.h"
 #include "parRegion.h"
-#include "util.h"
 #include "inst.h"
 #include "debug.h"
 #include "function.h"
 #include "Parsing.h"
 
 #include "common/src/Timer.h"
-#include "common/src/pathName.h"
+#include "common/src/dyninst_filesystem.h"
 #include "common/src/MappedFile.h"
-
-#include "dyninstAPI/h/BPatch_flowGraph.h"
 #include "common/h/util.h"
+#include "dyninstAPI/h/BPatch_flowGraph.h"
 
 #include "symtabAPI/h/Function.h"
 
@@ -62,11 +59,6 @@
 
 #if defined(TIMED_PARSE)
 #include <sys/time.h>
-#endif
-
-#if defined( cap_dwarf )
-#include "dwarf.h"
-#include "elfutils/libdw.h"
 #endif
 
 #if defined(_MSC_VER)
@@ -88,16 +80,6 @@ using Dyninst::SymtabAPI::Symbol;
 using Dyninst::SymtabAPI::Region;
 using Dyninst::SymtabAPI::Variable;
 using Dyninst::SymtabAPI::Module;
-
-char main_function_names[NUMBER_OF_MAIN_POSSIBILITIES][20] = {
-    "main",
-    "DYNINST_pltMain",
-    "_main",
-    "WinMain",
-    "_WinMain",
-    "wWinMain",
-    "_wWinMain",
-    "tls_cb_0"};
 
 fileDescriptor::fileDescriptor():
         code_(0), data_(0),
@@ -129,7 +111,7 @@ bool fileDescriptor::IsEqual(const fileDescriptor &fd) const {
 #endif  
 
 #if defined(os_windows)
-    if(extract_pathname_tail(file_) == extract_pathname_tail(fd.file_)) file_match_ = true;
+    if(Dyninst::filesystem::extract_filename(file_) == Dyninst::filesystem::extract_filename(fd.file_)) file_match_ = true;
 #endif
 
     bool addr_match = (code_ == fd.code_ && data_ == fd.data_);
@@ -162,7 +144,7 @@ extern unsigned enable_pd_sharedobj_debug;
 
 int codeBytesSeen = 0;
 
-#if defined(ppc64_linux)
+#if defined(ppc64_linux) && defined(DYNINST_CODEGEN_ARCH_POWER)
 
 #include <dataflowAPI/h/slicing.h>
 #include <dataflowAPI/h/SymEval.h>
@@ -465,7 +447,7 @@ class FindMainVisitor : public ASTVisitor
  */
 int image::findMain()
 {
-#if defined(ppc64_linux)
+#if defined(ppc64_linux) && defined(DYNINST_CODEGEN_ARCH_POWER)
     using namespace Dyninst::InstructionAPI;
 
     // Only look for main in executables, but do allow position-independent
@@ -863,8 +845,8 @@ int image::findMain()
         Region *eReg = linkedFile->findEnclosingRegion(eAddr);
 
         bool found_main = false;
-        for (unsigned i=0; i<NUMBER_OF_MAIN_POSSIBILITIES; i++) {
-            if(linkedFile->findFunctionsByName(funcs, main_function_names[i])) {
+        for(char const* name : main_function_names()) {
+            if(linkedFile->findFunctionsByName(funcs, name)) {
                 found_main = true;
                 break;
             }
@@ -1023,13 +1005,12 @@ pdmodule *image::findModule(const string &name, bool wildcard)
       //
       dyn_hash_map <string, pdmodule *>::iterator mi;
       string str; pdmodule *mod;
-      std::string pds = name.c_str();
 
       for(mi = modsByFileName.begin(); mi != modsByFileName.end() ; mi++)
       {
          str = mi->first;
          mod = mi->second;
-         if (wildcardEquiv(pds, mod->fileName())) {
+         if (wildcardEquiv(name, mod->fileName())) {
             found = mod; 
             break;
          }
@@ -1095,7 +1076,7 @@ void image::findModByAddr (const Symbol *lookUp, vector<Symbol *> &mods,
     if ((index == last) ||
 	((mods[index]->getOffset() <= symAddr) && 
 	 (mods[index+1]->getOffset() > symAddr))) {
-      modName = mods[index]->getMangledName().c_str();
+      modName = mods[index]->getMangledName();
       modAddr = mods[index]->getOffset();      
       found = true;
     } else if (symAddr < mods[index]->getOffset()) {
@@ -1149,8 +1130,6 @@ image *image::parseImage(fileDescriptor &desc,
       }
   }
 
-  stats_parse.startTimer(PARSE_SYMTAB_TIMER);
-
   /*
    * load the symbol table. (This is the a.out format specific routine).
    */
@@ -1164,9 +1143,12 @@ image *image::parseImage(fileDescriptor &desc,
 
   startup_printf("%s[%d]:  about to create image\n", FILE__, __LINE__);
   image *ret = new image(desc, err, mode, parseGaps); 
+  if(err) {
+    return nullptr;
+  }
   startup_printf("%s[%d]:  created image\n", FILE__, __LINE__);
 
-  if (ret->isSharedObject()) 
+  if (ret->isSharedLibrary()) 
       startup_printf("%s[%d]: processing shared object\n", FILE__, __LINE__);
   else  
       startup_printf("%s[%d]: processing executable object\n", FILE__, __LINE__);
@@ -1192,7 +1174,6 @@ image *image::parseImage(fileDescriptor &desc,
         fprintf(stderr, "Failed to allocate memory for parsing %s!\n", 
                 desc.file().c_str());
      }
-     stats_parse.stopTimer(PARSE_SYMTAB_TIMER);
      return NULL;
   }
 
@@ -1208,7 +1189,6 @@ image *image::parseImage(fileDescriptor &desc,
   // define all modules.
 
   statusLine("ready"); // this shouldn't be here, right? (cuz we're not done, right?)
-  stats_parse.stopTimer(PARSE_SYMTAB_TIMER);
 
   return ret;
 }
@@ -1299,8 +1279,6 @@ void image::analyzeImage() {
     struct timeval starttime;
     gettimeofday(&starttime, NULL);
 #endif
-    stats_parse.startTimer(PARSE_ANALYZE_TIMER);
-
 
     assert(parseState_ < analyzed);
     if(parseState_ < symtab){
@@ -1328,7 +1306,6 @@ void image::analyzeImage() {
     
     parseState_ = analyzed;
   done:
-    stats_parse.stopTimer(PARSE_ANALYZE_TIMER); 
 
 #if defined(TIMED_PARSE)
     struct timeval endtime;
@@ -1339,6 +1316,7 @@ void image::analyzeImage() {
     double dursecs = difftime/(1000 );
     cout << __FILE__ << ":" << __LINE__ <<": analyzeImage of " << name_ << " took "<<dursecs <<" msecs" << endl;
 #endif
+    return;
 }
 
 // Constructor for the image object. The fileDescriptor simply
@@ -1357,7 +1335,6 @@ image::image(fileDescriptor &desc,
    dataOffset_(0),
    dataLen_(0),
    is_libdyninstRT(false),
-   main_call_addr_(0),
    linkedFile(NULL),
 #if defined(os_linux) || defined(os_freebsd)
    archive(NULL),
@@ -1378,7 +1355,7 @@ image::image(fileDescriptor &desc,
    arch(Dyninst::Arch_none)
 {
 #if defined(os_linux) || defined(os_freebsd)
-   string file = desc_.file().c_str();
+   string const& file = desc_.file();
    if( desc_.member().empty() ) {
        startup_printf("%s[%d]:  opening file %s\n", FILE__, __LINE__, file.c_str());
        if( !SymtabAPI::Symtab::openFile(linkedFile, file, (BPatch_defensiveMode == mode ? Symtab::Defensive : Symtab::NotDefensive)) ) {
@@ -1390,7 +1367,7 @@ image::image(fileDescriptor &desc,
                desc_.member().c_str());
 
        if( SymtabAPI::Archive::openArchive(archive, file) ) {
-           if( !archive->getMember(linkedFile, const_cast<std::string&>(desc_.member())) ) {
+           if( !archive->getMember(linkedFile, desc_.member())) {
                err = true;
                return;
            }
@@ -1420,9 +1397,9 @@ image::image(fileDescriptor &desc,
 
    err = false;
 
-   name_ = extract_pathname_tail(string(desc.file().c_str()));
+   name_ = Dyninst::filesystem::extract_filename(desc.file());
 
-   pathname_ = desc.file().c_str();
+   pathname_ = desc.file();
 
    // initialize (data members) codeOffset_, dataOffset_,
    //  codeLen_, dataLen_.
@@ -1442,7 +1419,7 @@ image::image(fileDescriptor &desc,
    // if unable to parse object file (somehow??), try to
    //  notify user/calling process + return....    
    if (!imageLen_ && 
-       linkedFile->getObjectType() != SymtabAPI::obj_RelocatableFile)
+       !linkedFile->isUnlinkedObjectFile())
     {
       string msg = string("Parsing problem with executable file: ") + desc.file();
       statusLine(msg.c_str());
@@ -1581,7 +1558,7 @@ bool pdmodule::findFunctionByMangled( const std::string &name,
     // the problem is that BPatch goes by module and internal goes by image. 
     unsigned orig_size = found.size();
     
-    const std::vector<parse_func *> *obj_funcs = imExec()->findFuncVectorByMangled(name.c_str());
+    const std::vector<parse_func *> *obj_funcs = imExec()->findFuncVectorByMangled(name);
     if (!obj_funcs) {
         return false;
     }
@@ -1621,7 +1598,7 @@ bool pdmodule::findFunctionByPretty( const std::string &name,
     return false;
 }
 
-void pdmodule::dumpMangled(std::string &prefix) const
+void pdmodule::dumpMangled(std::string const& prefix) const
 {
   cerr << fileName() << "::dumpMangled("<< prefix << "): " << endl;
 
@@ -1631,7 +1608,8 @@ void pdmodule::dumpMangled(std::string &prefix) const
       parse_func * pdf = (parse_func*)*fit;
       if (pdf->pdmod() != this) continue;
 
-      if( ! strncmp( pdf->symTabName().c_str(), prefix.c_str(), strlen( prefix.c_str() ) ) ) {
+      if(pdf->symTabName().find(prefix) != 0UL) {
+          // the name starts with the prefix
           cerr << pdf->symTabName() << " ";
       }
   }
@@ -1813,7 +1791,7 @@ const std::vector<parse_func *> *image::findFuncVectorByPretty(const std::string
     //Have to change here
     std::vector<parse_func *>* res = new std::vector<parse_func *>;
     vector<SymtabAPI::Function *> funcs;
-    linkedFile->findFunctionsByName(funcs, name.c_str(), SymtabAPI::prettyName);
+    linkedFile->findFunctionsByName(funcs, name, SymtabAPI::prettyName);
 
     for(unsigned index=0; index < funcs.size(); index++)
     {
@@ -1839,7 +1817,7 @@ const std::vector <parse_func *> *image::findFuncVectorByMangled(const std::stri
     std::vector<parse_func *>* res = new std::vector<parse_func *>;
 
     vector<SymtabAPI::Function *> funcs;
-    linkedFile->findFunctionsByName(funcs, name.c_str(), SymtabAPI::mangledName);
+    linkedFile->findFunctionsByName(funcs, name, SymtabAPI::mangledName);
 
     for(unsigned index=0; index < funcs.size(); index++) {
         SymtabAPI::Function *symFunc = funcs[index];
@@ -1871,7 +1849,7 @@ const std::vector <image_variable *> *image::findVarVectorByPretty(const std::st
     std::vector<image_variable *>* res = new std::vector<image_variable *>;
 
     vector<Variable *> vars;
-    linkedFile->findVariablesByName(vars, name.c_str(), SymtabAPI::prettyName);
+    linkedFile->findVariablesByName(vars, name, SymtabAPI::prettyName);
     
     for (unsigned index=0; index < vars.size(); index++) {
         Variable *symVar = vars[index];
@@ -1900,7 +1878,7 @@ const std::vector <image_variable *> *image::findVarVectorByMangled(const std::s
     std::vector<image_variable *>* res = new std::vector<image_variable *>;
 
     vector<Variable *> vars;
-    linkedFile->findVariablesByName(vars, name.c_str(), SymtabAPI::mangledName);
+    linkedFile->findVariablesByName(vars, name, SymtabAPI::mangledName);
     
     for (unsigned index=0; index < vars.size(); index++) {
         Variable *symVar = vars[index];
@@ -1992,7 +1970,7 @@ bool image::getExecCodeRanges(std::vector<std::pair<Address, Address> > &ranges)
 
 Symbol *image::symbol_info(const std::string& symbol_name) {
    vector< Symbol *> symbols;
-   if(!(linkedFile->findSymbol(symbols,symbol_name.c_str(),Symbol::ST_UNKNOWN, SymtabAPI::anyName))) 
+   if(!(linkedFile->findSymbol(symbols,symbol_name,Symbol::ST_UNKNOWN, SymtabAPI::anyName)))
        return NULL;
 
    return symbols[0];
@@ -2002,7 +1980,7 @@ bool image::findSymByPrefix(const std::string &prefix, std::vector<Symbol *> &re
     unsigned start;
     vector <Symbol *>found;	
     std::string reg = prefix+std::string("*");
-    if(!linkedFile->findSymbol(found, reg.c_str(), Symbol::ST_UNKNOWN, SymtabAPI::anyName, true))
+    if(!linkedFile->findSymbol(found, reg, Symbol::ST_UNKNOWN, SymtabAPI::anyName, true))
     	return false;
     for(start=0;start< found.size();start++)
 		ret.push_back(found[start]);
@@ -2024,7 +2002,7 @@ std::unordered_map<Address, std::string> *image::getPltFuncs()
    pltFuncs = new std::unordered_map<Address, std::string>;
    assert(pltFuncs);
    for(unsigned k = 0; k < fbt.size(); k++) {
-      (*pltFuncs)[fbt[k].target_addr()] = fbt[k].name().c_str();
+      (*pltFuncs)[fbt[k].target_addr()] = fbt[k].name();
    }
    return pltFuncs;
 }

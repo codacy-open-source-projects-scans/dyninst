@@ -31,10 +31,16 @@
 #if !defined(VALUECOMPUTATION_H)
 #define VALUECOMPUTATION_H
 
-#include "InstructionAST.h"
+#include "compiler_annotations.h"
+#include "dyninst_visibility.h"
+#include "registers/MachRegister.h"
 #include "Result.h"
+#include "Visitor.h"
 
+#include <boost/shared_ptr.hpp>
+#include <boost/enable_shared_from_this.hpp>
 #include <sstream>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -43,7 +49,9 @@ namespace Dyninst { namespace InstructionAPI {
   class Expression;
   class Visitor;
 
-  class DYNINST_EXPORT Expression : public InstructionAST {
+  enum formatStyle { defaultStyle, memoryAccessStyle };
+
+  class DYNINST_EXPORT Expression : public boost::enable_shared_from_this<Expression> {
   public:
     typedef boost::shared_ptr<Expression> Ptr;
 
@@ -58,7 +66,20 @@ namespace Dyninst { namespace InstructionAPI {
     virtual ~Expression();
     Expression(const Expression&) = default;
 
+    bool operator==(const Expression &rhs) const {
+      // isStrictEqual assumes rhs and this to be of the same derived type
+      return ((typeid(*this) == typeid(rhs)) && isStrictEqual(rhs));
+    }
+
     virtual const Result& eval() const;
+
+    DYNINST_DEPRECATED("Use InstructionAPI::getUsedRegisters()")
+    void getUses(std::set<Expression::Ptr> &);
+
+    virtual bool isUsed(Expression::Ptr findMe) const = 0;
+
+    virtual std::string format(Dyninst::Architecture, formatStyle = defaultStyle) const = 0;
+    virtual std::string format(formatStyle = defaultStyle) const = 0;
 
     void setValue(const Result& knownValue);
     void clearValue();
@@ -68,28 +89,31 @@ namespace Dyninst { namespace InstructionAPI {
     virtual bool bind(Expression* expr, const Result& value);
     virtual void apply(Visitor*) {}
 
-    virtual void getChildren(std::vector<Expression::Ptr>& children) const = 0;
-    using InstructionAST::getChildren;
+    DYNINST_DEPRECATED("Use getSubexpressions()")
+    void getChildren(std::vector<Expression::Ptr> &children) const {
+      auto se = getSubexpressions();
+      children.insert(children.end(), se.begin(), se.end());
+    }
+
+    virtual std::vector<Expression::Ptr> getSubexpressions() const { return {}; }
 
   protected:
+    friend class MultiRegisterAST;
+    friend class RegisterAST;
+    friend class Immediate;
+
     virtual bool isFlag() const;
+
+    virtual bool isStrictEqual(const Expression &rhs) const = 0;
+
+    virtual bool checkRegID(Dyninst::MachRegister, unsigned int = 0, unsigned int = 0) const {
+      return false;
+    }
+
     Result userSetValue;
   };
 
-  class DYNINST_EXPORT DummyExpr : public Expression {
-  public:
-    virtual void getChildren(vector<InstructionAST::Ptr>&) const {}
-    virtual void getChildren(vector<Expression::Ptr>&) const {}
-    virtual void getUses(set<InstructionAST::Ptr>&) {}
-    virtual bool isUsed(InstructionAST::Ptr) const { return true; }
-    virtual std::string format(Architecture, formatStyle) const { return "[WILDCARD]"; }
-    virtual std::string format(formatStyle) const { return "[WILDCARD]"; }
-    DummyExpr() : Expression(u8) {}
-
-  protected:
-    virtual bool checkRegID(MachRegister, unsigned int = 0, unsigned int = 0) const;
-    virtual bool isStrictEqual(const InstructionAST& rhs) const;
-  };
+  using InstructionAST = Expression;
 
 }}
 

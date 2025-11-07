@@ -47,7 +47,7 @@
 #include <set>
 #include <algorithm>
 
-#include "common/src/arch.h"
+#include "common/src/arch-power.h"
 
 #include "instructionAPI/h/Instruction.h"
 #include "instructionAPI/h/InstructionDecoder.h"
@@ -57,6 +57,8 @@
 #include "addressSpace.h"
 #include "function.h"
 #include "baseTramp.h"
+#include "RegisterConversion.h"
+#include "registerSpace.h"
 
 
 using namespace Dyninst::SymtabAPI;
@@ -222,20 +224,31 @@ void parse_func::calcUsedRegs()
             i.getWriteSet(writtenRegs);
         }
     }
-    for(std::set<RegisterAST::Ptr>::const_iterator curReg = writtenRegs.begin();
-        curReg != writtenRegs.end();
-       ++curReg)
-    {
-        MachRegister r = (*curReg)->getID();
-        if((r & ppc32::GPR) && (r <= ppc32::r13))
-        {
-            usedRegisters->generalPurposeRegisters.insert(r & 0xFFFF);
-        }
-        else if(((r & ppc32::FPR) && (r <= ppc32::fpr13)) ||
-                  ((r & ppc32::FSR) && (r <= ppc32::fsr13)))
-        {
-            usedRegisters->floatingPointRegisters.insert(r & 0xFFFF);
-        }
+
+    for(auto const& reg : writtenRegs) {
+      MachRegister r = reg->getID();
+      auto regID = convertRegID(r);
+      if(regID == registerSpace::ignored) {
+        logLine("parse_func::calcUsedRegs: unknown written register\n");
+        continue;
+      }
+      auto const category = r.regClass();
+
+      // ppc{32,64}::{G,F}PR can be the same value, so avoid a -Wlogical-op warning
+      auto const is_gpr32 = (category == ppc32::GPR);
+      auto const is_gpr64 = (category == ppc64::GPR);
+      auto const is_gpr = (is_gpr32 || is_gpr64);
+
+      auto const is_fpr32 = (category == ppc32::FPR);
+      auto const is_fpr64 = (category == ppc64::FPR);
+      auto const is_fpr = (is_fpr32 || is_fpr64);
+
+      if(is_gpr) {
+        usedRegisters->generalPurposeRegisters.insert(regID);
+      }
+      else if(is_fpr) {
+        usedRegisters->floatingPointRegisters.insert(regID);
+      }
     }
    }
    return;

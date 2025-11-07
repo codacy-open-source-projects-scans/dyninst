@@ -57,10 +57,7 @@
 #include "RegisterConversion.h"
 #include "unaligned_memory_access.h"
 
-const int EmitterIA32::mt_offset = -4;
-#if defined(DYNINST_HOST_ARCH_X86_64)
-const int EmitterAMD64::mt_offset = -8;
-#endif
+#if defined(DYNINST_CODEGEN_ARCH_X86_64)
 
 static void emitXMMRegsSaveRestore(codeGen& gen, bool isRestore)
 {
@@ -96,6 +93,7 @@ static void emitXMMRegsSaveRestore(codeGen& gen, bool isRestore)
    }
    SET_PTR(insn, gen);
 }
+#endif
 
 static void emitSegPrefix(Register segReg, codeGen& gen)
 {
@@ -975,41 +973,7 @@ void emitMovImmToReg64(Register dest, long imm, bool is_64, codeGen &gen)
       emitMovImmToReg(RealRegister(tmp_dest), imm, gen);
 }
 
-// on 64-bit x86_64 targets, the DWARF register number does not
-// correspond to the machine encoding. See the AMD-64 ABI.
-
-// We can only safely map the general purpose registers (0-7 on ia-32,
-// 0-15 on amd-64)
-#define IA32_MAX_MAP 7
-#define AMD64_MAX_MAP 15
-static int const amd64_register_map[] =
-{ 
-    0,  // RAX
-    2,  // RDX
-    1,  // RCX
-    3,  // RBX
-    6,  // RSI
-    7,  // RDI
-    5,  // RBP
-    4,  // RSP
-    8, 9, 10, 11, 12, 13, 14, 15    // gp 8 - 15
-    
-    /* This is incomplete. The x86_64 ABI specifies a mapping from
-       dwarf numbers (0-66) to ("architecture number"). Without a
-       corresponding mapping for the SVR4 dwarf-machine encoding for
-       IA-32, however, it is not meaningful to provide this mapping. */
-};
-
-int Register_DWARFtoMachineEnc32(int n)
-{
-    if(n > IA32_MAX_MAP) {
-		assert(0);
-	}
-    
-    return n;
-}
-
-#if defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86_64)
 
 bool isImm64bit(Address imm) {
    return (imm >> 32);
@@ -1721,7 +1685,6 @@ bool EmitterAMD64::clobberAllFuncCall( registerSpace *rs,
       False - No FP Writes
    */
 
-   stats_codegen.startTimer(CODEGEN_LIVENESS_TIMER);  
    if (callee->ifunc()->writesFPRs()) {
       for (unsigned i = 0; i < rs->FPRs().size(); i++) {
          // We might want this to be another flag, actually
@@ -1734,8 +1697,6 @@ bool EmitterAMD64::clobberAllFuncCall( registerSpace *rs,
    for (int i = 0; i < rs->numGPRs(); i++) {
       rs->GPRs()[i]->beenUsed = true;
    }
-   
-   stats_codegen.stopTimer(CODEGEN_LIVENESS_TIMER);
    return true;
 }
 
@@ -2786,18 +2747,6 @@ void EmitterAMD64::emitAddSignedImm(Address addr, int imm, codeGen &gen,bool noC
    }
 }
 
-      
-int Register_DWARFtoMachineEnc64(int n)
-{
-    if(n <= AMD64_MAX_MAP)
-        return amd64_register_map[n];
-    else {
-		assert(0);
-		return n;
-
-    }
-}
-
 bool EmitterAMD64::emitPush(codeGen &gen, Register reg) {
     emitPushReg64(reg, gen);
     return true;
@@ -2826,7 +2775,7 @@ Address Emitter::getInterModuleFuncAddr(func_instance *func, codeGen& gen)
     BinaryEdit *binEdit = addrSpace->edit();
     Address relocation_address;
     unsigned int jump_slot_size = 4;
-#if defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86_64)
     jump_slot_size = 8;
 #endif
 
@@ -2860,7 +2809,7 @@ Address Emitter::getInterModuleVarAddr(const image_variable *var, codeGen& gen)
     BinaryEdit *binEdit = addrSpace->edit();
     Address relocation_address;
     unsigned int jump_slot_size = 4;
-#if defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86_64)
     jump_slot_size = 8;
 #endif
 
@@ -3077,7 +3026,7 @@ bool EmitterIA32::emitXorRegSegReg(Register /*dest*/, Register base, int disp, c
     return true;
 }
 
-#if defined(DYNINST_HOST_ARCH_X86_64)
+#if defined(DYNINST_CODEGEN_ARCH_X86_64)
 void EmitterAMD64::emitLoadShared(opCode op, Register dest, const image_variable *var, bool is_local, int size, codeGen &gen, Address offset)
 {
   Address addr;

@@ -34,6 +34,7 @@
 #define SYMTAB_HDR
 #define REGEX_CHARSET "^*|?"
 
+#include <array>
 #include <map>
 #include <utility>
 #include <vector>
@@ -48,10 +49,10 @@
 
 #include <set>
 
+#include "dyninst_visibility.h"
 #include "dyninstAPI/src/util.h"
 #include "dyninstAPI/src/codeRange.h"
 #include "dyninstAPI/src/infHeap.h"
-#include "dyninstAPI/src/inst.h"
 #include "dyninstAPI/h/BPatch_enums.h"
 
 #include <unordered_map>
@@ -68,7 +69,6 @@
 
 #include "parseAPI/h/CodeObject.h"
 #include "parseAPI/h/CodeSource.h"
-
 #include "dyninstAPI/src/Parsing.h"
 
 
@@ -95,8 +95,22 @@ typedef bool (*functionNameSieve_t)(const char *test,void *data);
 #define USER_MODULE "USER_MODULE"
 #define LIBRARY_MODULE	"LIBRARY_MODULE"
 
-#define NUMBER_OF_MAIN_POSSIBILITIES 8
-extern char main_function_names[NUMBER_OF_MAIN_POSSIBILITIES][20];
+inline std::array<char const*, 11> const& main_function_names() {
+  static constexpr std::array<char const *, 11> names = {{
+    "main",
+    "_main",
+    "main_",
+    "MAIN_",
+    "MAIN__",
+    "DYNINST_pltMain",
+    "WinMain",
+    "_WinMain",
+    "wWinMain",
+    "_wWinMain",
+    "tls_cb_0"
+  }};
+  return names;
+}
 
 class image;
 class lineTable;
@@ -346,12 +360,7 @@ class image : public codeRange {
    bool isDyninstRTLib() const { return is_libdyninstRT; }
    bool isExecutable() const { return getObject()->isExec(); }
    bool isSharedLibrary() const { return getObject()->isSharedLibrary(); }
-   bool isSharedObject() const { 
-    return (getObject()->getObjectType() == SymtabAPI::obj_SharedLib); 
-   }
-   bool isRelocatableObj() const { 
-    return (getObject()->getObjectType() == SymtabAPI::obj_RelocatableFile);
-   }
+   bool isUnlinkedObjectFile() const { return getObject()->isUnlinkedObjectFile(); }
 
    bool getExecCodeRanges(std::vector<std::pair<Address, Address> > &ranges);
 
@@ -389,13 +398,9 @@ class image : public codeRange {
 
     int getNextBlockID() { return nextBlockID_++; }
 
-   Address get_main_call_addr() const { return main_call_addr_; }
-
-   void * getErrFunc() const { return (void *) dyninst_log_perror; }
-
    std::unordered_map<Address, std::string> *getPltFuncs();
    void getPltFuncs(std::map<Address, std::string> &out);
-#if defined(DYNINST_HOST_ARCH_POWER)
+#if defined(DYNINST_CODEGEN_ARCH_POWER)
    bool updatePltFunc(parse_func *caller_func, Address stub_targ);
 #endif
 
@@ -457,7 +462,6 @@ class image : public codeRange {
    //Address dataValidEnd_;
 
    bool is_libdyninstRT;
-   Address main_call_addr_; // address of call to main()
 
    // data from the symbol table 
    SymtabAPI::Symtab *linkedFile;
@@ -538,7 +542,7 @@ class pdmodule {
                                std::vector<parse_func *> &found);
    bool findFunctionByPretty (const std::string &name,
                               std::vector<parse_func *> &found);
-   void dumpMangled(std::string &prefix) const;
+   void dumpMangled(std::string const& prefix) const;
    const string &fileName() const;
    SymtabAPI::supportedLanguages language() const;
    Address addr() const;

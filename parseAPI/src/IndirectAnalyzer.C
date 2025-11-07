@@ -112,6 +112,8 @@ bool IndirectControlFlowAnalyzer::NewJumpTableAnalysis(std::vector<std::pair< Ad
 
         auto old_ast = symRet[assignments[0]];
 
+	if (!old_ast) return false;
+
         auto new_ast = se.SimplifyAnAST(old_ast,0,false);
 
         /*do {
@@ -395,7 +397,7 @@ bool IndirectControlFlowAnalyzer::FindJunkInstruction(Address addr) {
 
     while (!ahPtr->hasCFT()) {
         Instruction i = ahPtr->current_instruction();
-        if (i.getOperation().getID() == e_No_Entry) {
+        if (!i.isValid()) {
             return true;
         }
         if (i.size() == 2 && i.rawByte(0) == 0x00 && i.rawByte(1) == 0x00) {

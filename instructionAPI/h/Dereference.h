@@ -53,54 +53,43 @@ namespace Dyninst { namespace InstructionAPI {
 
     virtual ~Dereference() {}
 
-    virtual void getChildren(vector<InstructionAST::Ptr>& children) const {
-      children.push_back(addressToDereference);
-      return;
+    std::vector<Expression::Ptr> getSubexpressions() const override {
+      return {addressToDereference};
     }
 
-    virtual void getChildren(vector<Expression::Ptr>& children) const {
-      children.push_back(addressToDereference);
-      return;
-    }
-
-    virtual void getUses(set<InstructionAST::Ptr>& uses) {
-      addressToDereference->getUses(uses);
-      return;
-    }
-
-    virtual bool isUsed(InstructionAST::Ptr findMe) const {
+    virtual bool isUsed(Expression::Ptr findMe) const override {
       return addressToDereference->isUsed(findMe) || *findMe == *this;
     }
 
-    virtual std::string format(formatStyle) const {
+    virtual std::string format(formatStyle) const override {
       std::string retVal;
       retVal += "[" + addressToDereference->format() + "]";
       return retVal;
     }
 
-    virtual std::string format(Architecture arch, formatStyle) const {
+    virtual std::string format(Architecture arch, formatStyle) const override {
       return ArchSpecificFormatter::getFormatter(arch).formatDeref(
           addressToDereference->format(arch));
     }
 
-    virtual bool bind(Expression* expr, const Result& value) {
+    virtual bool bind(Expression* expr, const Result& value) override {
       if(Expression::bind(expr, value)) {
         return true;
       }
       return addressToDereference->bind(expr, value);
     }
 
-    virtual void apply(Visitor* v) {
+    virtual void apply(Visitor* v) override {
       addressToDereference->apply(v);
       v->visit(this);
     }
 
   protected:
-    virtual bool isSameType(const InstructionAST& rhs) const {
+    virtual bool isSameType(const Expression& rhs) const {
       return dynamic_cast<const Dereference*>(&rhs) != NULL;
     }
 
-    virtual bool isStrictEqual(const InstructionAST& rhs) const {
+    virtual bool isStrictEqual(const Expression& rhs) const override {
       const Dereference& other(dynamic_cast<const Dereference&>(rhs));
       return *(other.addressToDereference) == *addressToDereference;
     }

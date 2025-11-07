@@ -58,17 +58,7 @@ namespace Dyninst { namespace InstructionAPI {
       : Expression(inputRegASTs[0]->getID(), inputRegASTs.size()), m_Regs{std::move(inputRegASTs)} {
   }
 
-  void MultiRegisterAST::getChildren(vector<InstructionAST::Ptr>& /*children*/) const { return; }
-
-  void MultiRegisterAST::getChildren(vector<Expression::Ptr>& /*children*/) const { return; }
-
-  void MultiRegisterAST::getUses(set<InstructionAST::Ptr>& uses) {
-    for(const auto& m_Reg : m_Regs) {
-      m_Reg->getUses(uses);
-    }
-  }
-
-  bool MultiRegisterAST::isUsed(InstructionAST::Ptr findMe) const { return isStrictEqual(*findMe); }
+  bool MultiRegisterAST::isUsed(Expression::Ptr findMe) const { return isStrictEqual(*findMe); }
 
   std::string MultiRegisterAST::format(Architecture arch, formatStyle) const {
     if(arch == Arch_amdgpu_gfx908 || arch == Arch_amdgpu_gfx90a || arch == Arch_amdgpu_gfx940) {
@@ -97,7 +87,7 @@ namespace Dyninst { namespace InstructionAPI {
     return m_Regs < rhs.m_Regs;
   }
 
-  bool MultiRegisterAST::isStrictEqual(const InstructionAST& rhs) const {
+  bool MultiRegisterAST::isStrictEqual(const Expression& rhs) const {
     try {
       const MultiRegisterAST& rhs_reg = dynamic_cast<const MultiRegisterAST&>(rhs);
       return m_Regs == rhs_reg.m_Regs;
@@ -118,7 +108,12 @@ namespace Dyninst { namespace InstructionAPI {
     return false;
   }
 
-  void MultiRegisterAST::apply(Visitor* v) { v->visit(this); }
+  void MultiRegisterAST::apply(Visitor* v) {
+    for(auto &&r : getRegs()) {
+      v->visit(r.get());
+    }
+    v->visit(this);
+  }
 
   static Result sizeToMask(uint32_t size) {
     switch(size) {

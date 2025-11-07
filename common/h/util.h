@@ -38,24 +38,11 @@
 
 namespace Dyninst {
 
-DYNINST_EXPORT unsigned addrHashCommon(const Address &addr);
-DYNINST_EXPORT unsigned ptrHash(const void * addr);
-DYNINST_EXPORT unsigned ptrHash(void * addr);
-
-DYNINST_EXPORT unsigned addrHash(const Address &addr);
-DYNINST_EXPORT unsigned addrHash4(const Address &addr);
-DYNINST_EXPORT unsigned addrHash16(const Address &addr);
-
-DYNINST_EXPORT unsigned stringhash(const std::string &s);
-DYNINST_EXPORT std::string itos(int);
-DYNINST_EXPORT std::string utos(unsigned);
-
 #define WILDCARD_CHAR '?'
 #define MULTIPLE_WILDCARD_CHAR '*'
 
 DYNINST_EXPORT bool wildcardEquiv(const std::string &us, const std::string &them, bool checkCase = false );
 
-const char *platform_string();
 }
 
 #endif

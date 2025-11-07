@@ -35,7 +35,7 @@
 #include <cstdint>
 #include <cassert>
 #include <string>
-#include "util.h"
+#include "dyninst_visibility.h"
 
 
 namespace Dyninst
@@ -395,9 +395,10 @@ namespace Dyninst
 
                 bool operator<(const Result& o) const
                 {
-                    if(type < o.type) return true;
                     if(!defined) return false;
                     if(!o.defined) return true;
+                    if(type < o.type) return true;
+                    if(type > o.type) return false;
 
                     switch(type)
                     {
