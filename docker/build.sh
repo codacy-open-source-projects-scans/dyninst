@@ -30,7 +30,7 @@ while [[ $# -gt 0 ]]; do
     -t) test_type="$2"; shift 2;;
     -h) show_help; exit;;
     -v) verbose="--verbose"; shift;;
-     *) echo "Unknown arg '$1'"; exit;;
+     *) echo "Unknown arg '$1'"; exit 1;;
   esac
 done
 
@@ -44,6 +44,7 @@ fi
 
 cmake_args+="-DDYNINST_WARNINGS_AS_ERRORS=ON "
 cmake_args+="-DDYNINST_ENABLE_FILEFORMAT_PE=ON "
+cmake_args+="-DDYNINST_ENABLE_CAPSTONE=ON "
 
 cmake -S ${src_dir} -B ${build_dir} -DCMAKE_INSTALL_PREFIX=${dest_dir} ${cmake_args}
 
