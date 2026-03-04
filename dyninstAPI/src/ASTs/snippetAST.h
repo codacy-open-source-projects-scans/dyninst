@@ -28,17 +28,39 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "binaryEdit.h"
-#include "mapped_object.h"
-#include "parse-cfg.h"
+#ifndef DYNINST_DYNINSTAPI_SNIPPETAST_H
+#define DYNINST_DYNINSTAPI_SNIPPETAST_H
 
-void parse_func::calcUsedRegs() {
+#include "dyn_register.h"
+#include "PatchCommon.h"
 
-  assert(!"Not implemented for AMDGPU");
-  return;
-}
+#include <boost/make_shared.hpp>
+#include "codeGenAST.h"
+#include <string>
 
-bool BinaryEdit::doStaticBinarySpecialCases() {
-  assert(!"Not implemented for AMDGPU");
-  return false;
-}
+class codeGen;
+
+namespace Dyninst { namespace DyninstAPI {
+
+// This is a little odd, since an codeGenAST _is_
+// a Snippet. It's a compatibility interface to
+// allow generic PatchAPI snippets to play nice
+// in our world.
+class snippetAST : public codeGenAST {
+public:
+  using Ptr = boost::shared_ptr<snippetAST>;
+
+  static Ptr create(Dyninst::PatchAPI::SnippetPtr snippet) {
+    return boost::make_shared<snippetAST>(std::move(snippet));
+  }
+
+  snippetAST(Dyninst::PatchAPI::SnippetPtr snippet) : snip_{std::move(snippet)} {}
+
+  bool generateCode_phase2(codeGen &gen, bool, Dyninst::Address &, Dyninst::Register &) override;
+
+  Dyninst::PatchAPI::SnippetPtr snip_{};
+};
+
+}}
+
+#endif

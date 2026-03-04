@@ -28,47 +28,22 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef AMDGPU_PROLOGUE_H
-#define AMDGPU_PROLOGUE_H
+#include "AmdgpuEpilogue.h"
+#include "emit-amdgpu.h"
 
-#include "BPatch_snippet.h"
-#include "ast.h"
-#include "common/src/dyn_register.h"
-#include "patchAPI/h/Snippet.h"
+namespace Dyninst { namespace DyninstAPI {
 
-// The prologue loads a register pair with address of the buffer containing instrumentation
-// variables.
-// PatchAPI snippet is used to insert the following prologue:
-//
-// Example when dest = 94, base = 4, offset = 0xabc; address_of_buffer is at s[4:5] + 0xabc.
-// Load it into s[94:95].
-//
-// s_load_dwordx2 s[94:95], s[4:5], 0xabc
-// s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-//
-class AmdgpuPrologue : public Dyninst::PatchAPI::Snippet {
-public:
-  AmdgpuPrologue(Dyninst::Register dest, Dyninst::Register base, unsigned offset)
-      : dest_(dest), base_(base), offset_(offset) {}
+// Similar approach to prologue
+bool AmdgpuEpilogue::generate(Dyninst::PatchAPI::Point * /* point */, Dyninst::Buffer &buffer) {
+  // We need 8 bytes for the epilogue (a s_dcache_wb instruction).
+  codeGen gen(20);
+  EmitterAmdgpuGfx908 emitter;
 
-  bool generate(Dyninst::PatchAPI::Point *point, Dyninst::Buffer &buffer);
+  emitter.emitScalarDataCacheWriteback(gen);
 
-private:
-  Dyninst::Register dest_;
-  Dyninst::Register base_;
-  unsigned offset_;
-};
+  buffer.copy(gen.start_ptr(), gen.used());
 
-// The AST node for the above PatchAPI snippet.
-class AmdgpuPrologueNode : public AstSnippetNode {
-public:
-  AmdgpuPrologueNode(Dyninst::PatchAPI::SnippetPtr p) : AstSnippetNode(p) {}
-};
+  return true;
+}
 
-// BPatch_snippet that uses the above AST node.
-class AmdgpuPrologueSnippet : public BPatch_snippet {
-public:
-  AmdgpuPrologueSnippet(const AstNodePtr &p) : BPatch_snippet(p) {}
-};
-
-#endif
+}}

@@ -56,7 +56,9 @@
 */
 
 #include <assert.h>
+#include "parse-cfg.h"
 #include "registerSpace.h"
+#include "RealRegister.h"
 
 #define NUM_VIRTUAL_REGISTERS (32)   /* number of virtual registers */
 #define IA32_FPR_VIRTUAL_REGISTER (NUM_VIRTUAL_REGISTERS + 1)
@@ -163,5 +165,7 @@ struct stackItemLocation {
 };
 
 stackItemLocation getHeightOf(stackItem sitem, codeGen &gen);
+
+bool writesFPRs(parse_func *func, unsigned level = 0);
 
 #endif

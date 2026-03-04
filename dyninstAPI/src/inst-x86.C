@@ -41,7 +41,6 @@
 #include <unordered_map>
 #include "dyninstAPI/src/image.h"
 #include "dyninstAPI/src/inst.h"
-#include "dyninstAPI/src/ast.h"
 #include "common/src/stats.h"
 #include "dyninstAPI/src/os.h"
 #include "dyninstAPI/src/debug.h"
@@ -51,7 +50,8 @@
 #include "baseTramp.h"
 #include "dyninstAPI/src/emit-x86.h"
 #include "dyninstAPI/src/instPoint.h" // includes instPoint-x86.h
-
+#include "registers/x86_regs.h"
+#include "registers/x86_64_regs.h"
 #include "dyninstAPI/src/addressSpace.h"
 #include "dyninstAPI/src/binaryEdit.h"
 #include "dyninstAPI/src/dynProcess.h"
@@ -66,6 +66,8 @@
 #include <sstream>
 #include <assert.h>
 #include "unaligned_memory_access.h"
+
+using codeGenASTPtr = Dyninst::DyninstAPI::codeGenASTPtr;
 
 class ExpandInstruction;
 class InsertNops;
@@ -751,7 +753,7 @@ unsigned char jccOpcodeFromRelOp(unsigned op, bool s)
 // this function just multiplexes between the 32-bit and 64-bit versions
 Dyninst::Register emitFuncCall(opCode op,
                       codeGen &gen,
-                      std::vector<AstNodePtr> &operands, 
+                      std::vector<codeGenASTPtr> &operands, 
                       bool noCost,
                       func_instance *callee)
 {
@@ -783,7 +785,7 @@ bool EmitterIA32::clobberAllFuncCall( registerSpace *rs,
      False - No FP Writes
   */
 
-  if (callee->ifunc()->writesFPRs()) {
+  if (writesFPRs(callee->ifunc())) {
       for (unsigned i = 0; i < rs->FPRs().size(); i++) {
           rs->FPRs()[i]->beenUsed = true;
       }
@@ -807,7 +809,7 @@ void EmitterIA32::setFPSaveOrNot(const int * liveFPReg,bool saveOrNot)
 
 Dyninst::Register EmitterIA32::emitCall(opCode op,
                                codeGen &gen,
-                               const std::vector<AstNodePtr> &operands, 
+                               const std::vector<codeGenASTPtr> &operands, 
                                bool noCost, func_instance *callee) {
     bool inInstrumentation = true;
     if (op != callOp) {
@@ -1646,7 +1648,7 @@ void emitLoadPreviousStackFrameRegister(Address register_num,
 // This can handle indirect control transfers as well 
 bool AddressSpace::getDynamicCallSiteArgs(InstructionAPI::Instruction insn,
                                           Address addr,
-                                          std::vector<AstNodePtr> &args)
+                                          std::vector<codeGenASTPtr> &args)
 {
    using namespace Dyninst::InstructionAPI;        
    Expression::Ptr cft = insn.getControlFlowTarget();
@@ -1654,8 +1656,7 @@ bool AddressSpace::getDynamicCallSiteArgs(InstructionAPI::Instruction insn,
    cft->apply(&f);
    assert(f.m_stack.size() == 1);
    args.push_back(f.m_stack[0]);
-   args.push_back(AstNode::operandNode(operandType::Constant,
-                                       (void *) addr));
+   args.push_back(DyninstAPI::operandAST::Constant((void *) addr));
    inst_printf("%s[%d]:  Inserting dynamic call site instrumentation for %s\n",
                FILE__, __LINE__, cft->format(insn.getArch()).c_str());
    return true;
@@ -1854,7 +1855,7 @@ void emitJump(unsigned disp32, codeGen &gen)
 // they are identical on Linux and FreeBSD
 
 int EmitterIA32::emitCallParams(codeGen &gen, 
-                              const std::vector<AstNodePtr> &operands,
+                              const std::vector<codeGenASTPtr> &operands,
                               func_instance */*target*/, 
                               std::vector<Dyninst::Register> &/*extra_saves*/,
                               bool noCost)
@@ -1895,3 +1896,101 @@ bool EmitterIA32::emitCallCleanup(codeGen &gen,
    return true;
 }
 #endif
+
+bool writesFPRs(parse_func *func, unsigned level) {
+  // Iterate down and find out...
+  // We know if we have callees because we can
+  // check the instPoints; no reason to iterate over.
+
+  if (level >= 3) {
+    return true; // Arbitrarily decided level 3 iteration.
+  }
+
+  for (auto *e : func->callEdges()) {
+    if (!e->trg())
+      continue;
+    auto *target = func->obj()->findFuncByEntry(func->region(), e->trg()->start());
+    parse_func *ct = dynamic_cast<parse_func*>(target);
+    if (ct) {
+      if (writesFPRs(ct, level + 1)) {
+        // One of our kids does... if we're top-level, cache it; in
+        // any case, return
+        if (level == 0)
+          return true;
+      }
+    } else if (!ct) {
+      // Indirect call... oh, yeah.
+      if (level == 0)
+        return true;
+    }
+  }
+
+  using namespace Dyninst::InstructionAPI;
+
+  // No kids contain writes. See if our code does.
+  auto candidate_regs = [func]() -> std::vector<RegisterAST::Ptr> {
+    if (func->isrc()->getArch() == Dyninst::Arch_x86) {
+      return {
+        RegisterAST::Ptr(new RegisterAST(x86::st0)),
+        RegisterAST::Ptr(new RegisterAST(x86::st1)),
+        RegisterAST::Ptr(new RegisterAST(x86::st2)),
+        RegisterAST::Ptr(new RegisterAST(x86::st3)),
+        RegisterAST::Ptr(new RegisterAST(x86::st4)),
+        RegisterAST::Ptr(new RegisterAST(x86::st5)),
+        RegisterAST::Ptr(new RegisterAST(x86::st6)),
+        RegisterAST::Ptr(new RegisterAST(x86::st7)),
+        RegisterAST::Ptr(new RegisterAST(x86::xmm0)),
+        RegisterAST::Ptr(new RegisterAST(x86::xmm1)),
+        RegisterAST::Ptr(new RegisterAST(x86::xmm2)),
+        RegisterAST::Ptr(new RegisterAST(x86::xmm3)),
+        RegisterAST::Ptr(new RegisterAST(x86::xmm4)),
+        RegisterAST::Ptr(new RegisterAST(x86::xmm5)),
+        RegisterAST::Ptr(new RegisterAST(x86::xmm6)),
+        RegisterAST::Ptr(new RegisterAST(x86::xmm7))
+      };
+    }
+    return {
+      RegisterAST::Ptr(new RegisterAST(x86_64::st0)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::st1)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::st2)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::st3)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::st4)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::st5)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::st6)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::st7)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::xmm0)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::xmm1)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::xmm2)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::xmm3)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::xmm4)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::xmm5)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::xmm6)),
+      RegisterAST::Ptr(new RegisterAST(x86_64::xmm7))
+    };
+  }();
+
+  for (auto *fe : func->extents()) {
+    void *iptr = func->isrc()->getPtrToInstruction(fe->start());
+    auto *buf = reinterpret_cast<const unsigned char *>(iptr);
+    if (!buf) {
+      parsing_printf("%s[%d]: failed to get insn ptr at %lx\n", FILE__,
+                     __LINE__, fe->start());
+      // if the function cannot be parsed, it is only safe to
+      // assume that the FPRs are written -- mcnulty
+      return true;
+    }
+
+    InstructionDecoder d(buf, fe->end() - fe->start(), func->isrc()->getArch());
+    Instruction i = d.decode();
+
+    while (i.isValid()) {
+      for (auto &r : candidate_regs) {
+        if (i.isWritten(r)) {
+          return true;
+        }
+        i = d.decode();
+      }
+    }
+  }
+  return false;
+}

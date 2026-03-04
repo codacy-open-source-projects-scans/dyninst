@@ -41,7 +41,6 @@
 #include "dyninstAPI/src/inst-power.h"
 #include "common/src/arch-power.h"
 #include "dyninstAPI/src/codegen.h"
-#include "dyninstAPI/src/ast.h"
 #include "common/src/stats.h"
 #include "dyninstAPI/src/os.h"
 #include "dyninstAPI/src/instPoint.h" // class instPoint
@@ -52,15 +51,18 @@
 #include "dyninstAPI/src/binaryEdit.h"
 #include "dyninstAPI/src/function.h"
 #include "dyninstAPI/src/mapped_object.h"
-
+#include "parse-cfg.h"
 #include "parseAPI/h/CFG.h"
-
+#include "RegisterConversion.h"
 #include "emitter.h"
 #include "emit-power.h"
 
 #include <sstream>
 
 #include "dyninstAPI/h/BPatch_memoryAccess_NP.h"
+
+using codeGenASTPtr = Dyninst::DyninstAPI::codeGenASTPtr;
+using operandAST = Dyninst::DyninstAPI::operandAST;
 
 extern bool isPowerOf2(int value, int &result);
 
@@ -722,6 +724,61 @@ void emitImm(opCode op, Dyninst::Register src1, RegValue src2imm, Dyninst::Regis
     }
 }
 
+struct parsed_regs {
+  std::set<Dyninst::Register> gprs, fprs;
+};
+
+/* This does a linear scan to find out which registers are used in the function,
+   it then stores these registers so the scan only needs to be done once.
+   It returns true or false based on whether the function is a leaf function,
+   since if it is not the function could call out to another function that
+   clobbers more registers so more analysis would be needed */
+static parsed_regs calcUsedRegs(parse_func *func) {
+  parsed_regs usedRegisters;
+  using namespace Dyninst::InstructionAPI;
+  std::set<RegisterAST::Ptr> writtenRegs;
+
+  auto bl = func->blocks();
+  auto curBlock = bl.begin();
+  for (; curBlock != bl.end(); ++curBlock) {
+    InstructionDecoder d(func->getPtrToInstruction((*curBlock)->start()),
+                         (*curBlock)->size(), func->isrc()->getArch());
+    Instruction i;
+    unsigned size = 0;
+    while (size < (*curBlock)->size()) {
+      i = d.decode();
+      size += i.size();
+      i.getWriteSet(writtenRegs);
+    }
+  }
+
+  for (auto const &reg : writtenRegs) {
+    MachRegister r = reg->getID();
+    auto regID = convertRegID(r);
+    if (regID == registerSpace::ignored) {
+      logLine("parse_func::calcUsedRegs: unknown written register\n");
+      continue;
+    }
+    auto const category = r.regClass();
+
+    // ppc{32,64}::{G,F}PR can be the same value, so avoid a -Wlogical-op
+    // warning
+    auto const is_gpr32 = (category == ppc32::GPR);
+    auto const is_gpr64 = (category == ppc64::GPR);
+    auto const is_gpr = (is_gpr32 || is_gpr64);
+
+    auto const is_fpr32 = (category == ppc32::FPR);
+    auto const is_fpr64 = (category == ppc64::FPR);
+    auto const is_fpr = (is_fpr32 || is_fpr64);
+
+    if (is_gpr) {
+      usedRegisters.gprs.insert(regID);
+    } else if (is_fpr) {
+      usedRegisters.fprs.insert(regID);
+    }
+  }
+  return usedRegisters;
+}
 
 /* Recursive function that goes to where our instrumentation is calling
 to figure out what registers are clobbered there, and in any function
@@ -732,7 +789,6 @@ look at the first level and not do recursive, since we would have to also
 store and reexamine every call out instead of doing it on the fly like before*/
 bool EmitterPOWER::clobberAllFuncCall( registerSpace *rs,
                                        func_instance * callee)
-		   
 {
   if (!callee) return true;
 
@@ -741,17 +797,13 @@ bool EmitterPOWER::clobberAllFuncCall( registerSpace *rs,
      if it is, we use the register info we gathered,
      otherwise, we punt and save everything */
   if (callee->ifunc()->isLeafFunc()) {
-      std::set<Dyninst::Register> * gprs = callee->ifunc()->usedGPRs();
-      std::set<Dyninst::Register>::iterator It = gprs->begin();
-      for(unsigned i = 0; i < gprs->size(); i++) {
-          rs->GPRs()[*(It++)]->beenUsed = true;
+      auto used_regs = calcUsedRegs(callee->ifunc());
+      for(Dyninst::Register r : used_regs.gprs) {
+          rs->GPRs()[r]->beenUsed = true;
       }
       
-      std::set<Dyninst::Register> * fprs = callee->ifunc()->usedFPRs();
-      std::set<Dyninst::Register>::iterator It2 = fprs->begin();
-      for(unsigned i = 0; i < fprs->size(); i++)
-      {
-          rs->FPRs()[registerSpace::FPR(*(It2++))]->beenUsed = true;
+      for(Dyninst::Register r : used_regs.fprs) {
+          rs->FPRs()[registerSpace::FPR(r)]->beenUsed = true;
       }
     }
   else {
@@ -768,7 +820,7 @@ bool EmitterPOWER::clobberAllFuncCall( registerSpace *rs,
 
 Dyninst::Register emitFuncCall(opCode op,
                       codeGen &gen,
-                      std::vector<AstNodePtr> &operands, bool noCost,
+                      std::vector<codeGenASTPtr> &operands, bool noCost,
                       func_instance *callee) {
     return gen.emitter()->emitCall(op, gen, operands, noCost, callee);
 }
@@ -852,7 +904,7 @@ Dyninst::Register EmitterPOWER::emitCallReplacement(opCode ocode,
 
 Dyninst::Register EmitterPOWER::emitCall(opCode ocode,
                                 codeGen &gen,
-                                const std::vector<AstNodePtr> &operands,
+                                const std::vector<codeGenASTPtr> &operands,
                                 bool noCost,
                                 func_instance *callee) {
     bool inInstrumentation = true;
@@ -1738,7 +1790,7 @@ void emitLoadPreviousStackFrameRegister(Address register_num,
 using namespace Dyninst::InstructionAPI; 
 bool AddressSpace::getDynamicCallSiteArgs(InstructionAPI::Instruction i,
 					  Address addr, 
-					  std::vector<AstNodePtr> &args)
+					  std::vector<codeGenASTPtr> &args)
 {
   static RegisterAST::Ptr ctr32(new RegisterAST(ppc32::ctr));
   static RegisterAST::Ptr ctr64(new RegisterAST(ppc64::ctr));
@@ -1769,12 +1821,10 @@ bool AddressSpace::getDynamicCallSiteArgs(InstructionAPI::Instruction i,
     if(branch_target != registerSpace::ignored)
     {
         // Where we're jumping to (link register, count register)
-        args.push_back( AstNode::operandNode(operandType::origRegister,
-                        (void *)(long)branch_target));
+        args.push_back(operandAST::origRegister((void *)(long)branch_target));
 
         // Where we are now
-        args.push_back( AstNode::operandNode(operandType::Constant,
-                        (void *) addr));
+        args.push_back(operandAST::Constant((void *) addr));
 
         return true;
     }

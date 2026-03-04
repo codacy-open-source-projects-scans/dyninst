@@ -28,21 +28,40 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "AmdgpuPrologue.h"
-#include "emit-amdgpu.h"
+#ifndef DYNINST_DYNINSTAPI_NULLAST_H
+#define DYNINST_DYNINSTAPI_NULLAST_H
 
-bool AmdgpuPrologue::generate(Dyninst::PatchAPI::Point * /* point */, Dyninst::Buffer &buffer) {
-  // To avoid any code duplication or refactoring right now, we use a 'codeGen'
-  // object to generate the code and copy what we get there into the
-  // 'Dyninst::Buffer' object passed here.
+#include "dyn_register.h"
 
-  // We need 12 bytes for the prologue (a s_load_dwordx2, followed by a waitcnt)
-  codeGen gen(20);
-  EmitterAmdgpuGfx908 emitter;
+#include <boost/make_shared.hpp>
+#include "codeGenAST.h"
+#include <string>
 
-  emitter.emitLoadRelative(dest_, offset_, base_, /* size= */ 2, gen);
+class codeGen;
 
-  buffer.copy(gen.start_ptr(), gen.used());
+namespace Dyninst { namespace DyninstAPI {
 
-  return true;
-}
+class nullAST : public codeGenAST {
+public:
+  using Ptr = boost::shared_ptr<nullAST>;
+
+  static Ptr create() {
+    return boost::make_shared<nullAST>();
+  }
+
+  nullAST() = default;
+
+  virtual std::string format(std::string indent) override;
+
+  bool canBeKept() const override {
+    return true;
+  }
+
+private:
+  bool generateCode_phase2(codeGen &gen, bool, Dyninst::Address &retAddr,
+                           Dyninst::Register &retReg) override;
+};
+
+}}
+
+#endif

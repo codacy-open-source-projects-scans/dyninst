@@ -92,8 +92,6 @@ parse_func::parse_func(
   func_(func),
   mod_(m),
   image_(i),
-  usedRegisters(NULL),
-  containsFPRWrites_(unknown),
   hasWeirdInsns_(false),
   prevBlocksUnresolvedCF_(0),
   unresolvedCF_(UNSET_CF),
@@ -118,7 +116,6 @@ parse_func::~parse_func()
 {
     /* FIXME */ 
   mal_printf("~image_func() for func at %lx\n",_start);
-  delete usedRegisters;
 }
 
 bool parse_func::addSymTabName(std::string name, bool isPrimary) 
@@ -165,12 +162,6 @@ Address parse_func::getEndOffset() {
     } else {
         return extents().back()->end();
     }
-}
-
-
-const std::vector<image_parRegion *> &parse_func::parRegions() {
-  if (!parsed()) image_->analyzeIfNeeded();
-  return parRegionsList;
 }
 
 bool parse_func::isPLTFunction() {
@@ -389,15 +380,6 @@ bool parse_func::isLeafFunc() {
         image_->analyzeIfNeeded();
 
     return callEdges().empty();
-}
-
-void parse_func::addParRegion(Address begin, Address end, parRegType t)
-{
-    image_parRegion * iPar = new image_parRegion(begin, this);
-    iPar->setRegionType(t);
-    iPar->setParentFunc(this); // when not outlined, parent func will be same as regular
-    iPar->setLastInsn(end);
-    parRegionsList.push_back(iPar);
 }
 
 void parse_block::getInsns(Insns &insns, Address base) {

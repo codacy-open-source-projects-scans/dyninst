@@ -26,7 +26,6 @@ set(_public_headers
     h/BPatch_memoryAccess_NP.h
     h/BPatch_module.h
     h/BPatch_object.h
-    h/BPatch_parRegion.h
     h/BPatch_point.h
     h/BPatch_process.h
     h/BPatch_Set.h
@@ -43,11 +42,31 @@ set(_private_headers
     src/addressSpace.h
     src/AmdgpuKernelDescriptor.h
     src/AmdgpuPointHandler.h
-    src/AmdgpuPrologue.h
-    src/AmdgpuEpilogue.h
     ${PROJECT_SOURCE_DIR}/external/amdgpu/AMDHSAKernelDescriptor.h
     ${PROJECT_SOURCE_DIR}/external/amdgpu/AMDGPUEFlags.h
     src/ast.h
+    src/ASTs/AmdgpuEpilogue.h
+    src/ASTs/AmdgpuPrologue.h
+    src/ASTs/ast_helpers.h
+    src/ASTs/addressAST.h
+    src/ASTs/memoryAccessAST.h
+    src/ASTs/nullAST.h
+    src/ASTs/stackAST.h
+    src/ASTs/operandAST.h
+    src/ASTs/operatorAST.h
+    src/ASTs/scrambleRegistersAST.h
+    src/ASTs/sequenceAST.h
+    src/ASTs/snippetAST.h
+    src/ASTs/stackInsertionAST.h
+    src/ASTs/genericStackAST.h
+    src/ASTs/stackRemovalAST.h
+    src/ASTs/atomicOperationAST.h
+    src/ASTs/codeGenAST.h
+    src/ASTs/functionCallAST.h
+    src/ASTs/jumpTargetAST.h
+    src/ASTs/threadAST.h
+    src/ASTs/variableAST.h
+    src/ASTs/OperandType.h
     src/trampolines/baseTramp.h
     src/trampolines/baseTramp-aarch64.h
     src/trampolines/baseTramp-amdgpu.h
@@ -97,9 +116,7 @@ set(_private_headers
     src/mapped_object.h
     src/nt_signal_emul.h
     src/opcode.h
-    src/OperandType.h
     src/os.h
-    src/parRegion.h
     src/parse-cfg.h
     src/Parsing.h
     src/patch.h
@@ -110,6 +127,8 @@ set(_private_headers
     src/PointHandler.h
     src/RegisterConversion.h
     src/registerSpace/registerSpace.h
+    src/registerSpace/RealRegister.h
+    src/registerSpace/registerSlot.h
     src/regTracker.h
     src/syscallNotification.h
     src/trapMappings.h
@@ -119,7 +138,25 @@ set(_private_headers
 
 set(_sources
     src/addressSpace.C
-    src/ast.C
+    src/ASTs/actualAddressAST.C
+    src/ASTs/memoryAccessAST.C
+    src/ASTs/nullAST.C
+    src/ASTs/operandAST.C
+    src/ASTs/operatorAST.C
+    src/ASTs/originalAddressAST.C
+    src/ASTs/scrambleRegistersAST.C
+    src/ASTs/sequenceAST.C
+    src/ASTs/snippetAST.C
+    src/ASTs/stackAST.C
+    src/ASTs/stackInsertionAST.C
+    src/ASTs/genericStackAST.C
+    src/ASTs/stackRemovalAST.C
+    src/ASTs/atomicOperationAST.C
+    src/ASTs/codeGenAST.C
+    src/ASTs/functionCallAST.C
+    src/ASTs/jumpTargetAST.C
+    src/ASTs/threadAST.C
+    src/ASTs/variableAST.C
     src/binaryEdit.C
     src/block.C
     src/codeRange.C
@@ -140,7 +177,6 @@ set(_sources
     src/instPoint.C
     src/mapped_module.C
     src/mapped_object.C
-    src/parRegion.C
     src/parse-cfg.C
     src/pcEventHandler.C
     src/pcEventMuxer.C
@@ -163,7 +199,6 @@ set(_sources
     src/BPatch_memoryAccessAdapter.C
     src/BPatch_module.C
     src/BPatch_object.C
-    src/BPatch_parRegion.C
     src/BPatch_point.C
     src/BPatch_process.C
     src/BPatch_snippet.C
@@ -175,6 +210,7 @@ set(_sources
     src/Parsing.C
     src/Patching.C
     src/registerSpace/registerSpace.C
+    src/registerSpace/registerSlot.C
     src/Relocation/CFG/RelocBlock.C
     src/Relocation/CFG/RelocEdge.C
     src/Relocation/CFG/RelocGraph.C
@@ -236,7 +272,6 @@ if(DYNINST_CODEGEN_ARCH_I386 OR DYNINST_CODEGEN_ARCH_X86_64)
     src/inst-x86.C
     src/emit-x86.C
     src/codegen-x86.C
-    src/parse-x86.C
     src/IAPI_to_AST.C
     src/trampolines/baseTramp-x86.C)
 elseif(DYNINST_CODEGEN_ARCH_PPC64LE)
@@ -245,7 +280,6 @@ elseif(DYNINST_CODEGEN_ARCH_PPC64LE)
     _sources
     src/inst-power.C
     src/codegen-power.C
-    src/parse-power.C
     src/registerSpace/registerSpace-ppc.C
     src/RegisterConversion-ppc.C
     src/Relocation/Widgets/CFWidget-ppc.C
@@ -258,7 +292,6 @@ elseif(DYNINST_CODEGEN_ARCH_AARCH64)
     src/inst-aarch64.C
     src/emit-aarch64.C
     src/codegen-aarch64.C
-    src/parse-aarch64.C
     src/RegisterConversion-aarch64.C
     src/registerSpace/registerSpace-aarch64.C
     src/Relocation/Widgets/CFWidget-aarch64.C
@@ -272,14 +305,13 @@ elseif(DYNINST_CODEGEN_ARCH_AMDGPU_GFX908)
     src/emit-amdgpu.C
     src/codegen-amdgpu.C
     src/registerSpace/registerSpace-amdgpu.C
-    src/parse-amdgpu.C
     src/RegisterConversion-amdgpu.C
     src/Relocation/Widgets/CFWidget-amdgpu.C
     src/Relocation/Widgets/PCWidget-amdgpu.C
     src/AmdgpuKernelDescriptor.C
     src/AmdgpuPointHandler.C
-    src/AmdgpuPrologue.C
-    src/AmdgpuEpilogue.C
+    src/ASTs/AmdgpuPrologue.C
+    src/ASTs/AmdgpuEpilogue.C
     src/amdgpu-gfx908-details.C)
 endif()
 
@@ -334,6 +366,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   endif()
 endif()
 
+list(APPEND _inc_dirs "${CMAKE_CURRENT_SOURCE_DIR}/src/ASTs")
+list(APPEND _inc_dirs "${CMAKE_CURRENT_SOURCE_DIR}/src/registerSpace")
+list(APPEND _inc_dirs "${CMAKE_CURRENT_SOURCE_DIR}/src/trampolines")
+
 foreach(t ${dyninstAPI_TARGETS})
   if(DYNINST_OS_Windows)
     target_link_libraries(${t} PRIVATE dbghelp WS2_32 imagehlp)
@@ -345,9 +381,7 @@ foreach(t ${dyninstAPI_TARGETS})
       ${t} PRIVATE "DYNINST_COMPILER_SEARCH_DIRS=${DYNINST_COMPILER_SEARCH_DIRS}")
   endif()
 
-  target_include_directories(
-    ${t}
-    PUBLIC
-      "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/trampolines;${CMAKE_CURRENT_SOURCE_DIR}/src/registerSpace>"
-    )
+  target_include_directories(${t} PUBLIC "$<BUILD_INTERFACE:${_inc_dirs}>")
 endforeach()
+
+unset(_inc_dirs)
