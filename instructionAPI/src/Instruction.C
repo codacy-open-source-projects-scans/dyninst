@@ -118,7 +118,7 @@ namespace Dyninst { namespace InstructionAPI {
 
   std::vector<Operand> Instruction::getExplicitEncodedOperands() const {
     if(isCompressed()) {
-      return std::vector<Operand>(m_EncodedOperands.begin(), m_EncodedOperands.end());
+      return m_EncodedOperands;
     }
     return getExplicitOperands();
   }
@@ -129,8 +129,8 @@ namespace Dyninst { namespace InstructionAPI {
     return m_EncodedInsnOp;
   }
 
-  std::vector<Operand> Instruction::getAllOperands() const {
-    return std::vector<Operand>(m_Operands.begin(), m_Operands.end());
+  std::vector<Operand> const& Instruction::getAllOperands() const {
+    return m_Operands;
   }
 
   std::vector<Operand> Instruction::getExplicitOperands() const {
@@ -175,9 +175,7 @@ namespace Dyninst { namespace InstructionAPI {
       // Out of range = empty operand
       return Operand(Expression::Ptr(), false, false);
     }
-    std::list<Operand>::const_iterator found = m_Operands.begin();
-    std::advance(found, index);
-    return *found;
+    return m_Operands[index];
   }
 
   Operand Instruction::getEncodedExplicitOperand(int index) const {
@@ -185,9 +183,7 @@ namespace Dyninst { namespace InstructionAPI {
       // Out of range = empty operand
       return Operand(Expression::Ptr(), false, false);
     }
-    std::list<Operand>::const_iterator found = m_EncodedOperands.begin();
-    std::advance(found, index);
-    return *found;
+    return m_EncodedOperands[index];
   }
 
   const void* Instruction::ptr() const {
@@ -388,12 +384,6 @@ namespace Dyninst { namespace InstructionAPI {
   Architecture Instruction::getArch() const { return arch_decoded_from; }
 
   InsnCategory Instruction::getCategory() const {
-    if(m_InsnOp.isMultiInsnCall || m_InsnOp.isNonABICall)
-      return c_CallInsn;
-    if(m_InsnOp.isMultiInsnBranch)
-      return c_BranchInsn;
-    if(m_InsnOp.isNonABIReturn)
-      return c_ReturnInsn;
     if(arch_decoded_from == Arch_riscv64) {
       if(categories.categories.size()) {
         return categories.categories[0];
@@ -420,6 +410,18 @@ namespace Dyninst { namespace InstructionAPI {
       return c_InterruptInsn;
     }
     return c;
+  }
+
+  void Instruction::forceCall() const {
+    if(arch_decoded_from == Arch_riscv64) {
+      categories.categories.push_back(c_CallInsn);
+    }
+  }
+
+  void Instruction::forceReturn() const {
+    if(arch_decoded_from == Arch_riscv64) {
+      categories.categories.push_back(c_ReturnInsn);
+    }
   }
 
   void Instruction::addSuccessor(Expression::Ptr e, bool isCall, bool isIndirect,
