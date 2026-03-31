@@ -1498,15 +1498,6 @@ bool Symtab::addUserType(Type *t)
    return true;
 }
 
-bool Symtab::addRegion(Region *sec)
-{
-  regions_.push_back(sec);
-  sec->setSymtab(this);
-  std::sort(regions_.begin(), regions_.end(), sort_reg_by_addr);
-  addUserRegion(sec);
-   return true;
-}
-
 void Symtab::parseLineInformation()
 {
    Object *linkedFile = getObject();
@@ -1854,28 +1845,6 @@ DYNINST_EXPORT bool Symtab::fixup_RegionAddr(const char* name, Offset memOffset,
     std::sort(dataRegions_.begin(), dataRegions_.end(), sort_reg_by_addr);
     std::sort(regions_.begin(), regions_.end(), sort_reg_by_addr);
     return true;
-}
-
-DYNINST_EXPORT bool Symtab::updateRegion(const char* name, void *buffer, unsigned size)
-{
-   Region *sec;
-
-   if (!findRegion(sec, name))
-      return false;
-
-   sec->setPtrToRawData(buffer, size);
-
-   return true;
-}
-
-DYNINST_EXPORT bool Symtab::updateCode(void *buffer, unsigned size)
-{
-  return updateRegion(".text", buffer, size);
-}
-
-DYNINST_EXPORT bool Symtab::updateData(void *buffer, unsigned size)
-{
-  return updateRegion(".data", buffer, size);
 }
 
 DYNINST_EXPORT Offset Symtab::getFreeOffset(unsigned size) 
