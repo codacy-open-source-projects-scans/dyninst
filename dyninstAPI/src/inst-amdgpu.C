@@ -47,18 +47,6 @@ void emitImm(opCode /* op */, Register /* src1 */, RegValue /* src2imm */, Regis
   assert(!"Not implemented for AMDGPU");
 }
 
-Register emitFuncCall(opCode, codeGen &, std::vector<codeGenASTPtr> &, Address) {
-  assert(!"Not implemented for AMDGPU");
-  return 0;
-}
-
-Register emitFuncCall(opCode /* op */, codeGen & /* gen */,
-                      std::vector<codeGenASTPtr> & /* operands */,
-                      func_instance * /* callee */) {
-  assert(!"Not implemented for AMDGPU");
-  return 0;
-}
-
 codeBufIndex_t emitA(opCode /* op */, Register /* src1 */, long /* dest */,
                      codeGen & /* gen */, Dyninst::DyninstAPI::RegControl /* rc */) {
   assert(!"Not implemented for AMDGPU");
@@ -69,10 +57,6 @@ Register emitR(opCode /* op */, Register /* src1 */, Register /* src2 */, Regist
                codeGen & /* gen */, const instPoint *) {
   assert(!"Not implemented for AMDGPU");
   return 0;
-}
-
-void emitJmpMC(int /*condition*/, int /*offset*/, codeGen &) {
-  assert(!"Not implemented for AMDGPU");
 }
 
 void emitASload(const BPatch_addrSpec_NP * /* as */, Register /* dest */, int /* stackShift */,

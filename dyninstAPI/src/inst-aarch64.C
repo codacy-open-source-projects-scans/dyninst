@@ -494,13 +494,6 @@ bool EmitterAARCH64::clobberAllFuncCall(registerSpace *rs,
   return false;
 }
 
-Register emitFuncCall(opCode op,
-                      codeGen &gen,
-                      std::vector <codeGenASTPtr> &operands,
-                      func_instance *callee) {
-    return gen.emitter()->emitCall(op, gen, operands, callee);
-}
-
 Register EmitterAARCH64::emitCallReplacement(opCode,
                                              codeGen &,
                                              func_instance *) {
@@ -724,12 +717,6 @@ Register emitR(opCode op, Register src1, Register src2, Register dest,
     }
     return reg;
 }
-
-void emitJmpMC(int /*condition*/, int /*offset*/, codeGen &) {
-    assert(0); //Not implemented
-    // Not needed for memory instrumentation, otherwise TBD
-}
-
 
 // VG(03/15/02): Restore mutatee value of GPR reg to dest GPR
 static inline void restoreGPRtoGPR(codeGen &gen,

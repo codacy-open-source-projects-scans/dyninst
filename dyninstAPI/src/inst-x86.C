@@ -731,16 +731,6 @@ unsigned char jccOpcodeFromRelOp(unsigned op, bool s)
    return 0x0;
 }
 
-// this function just multiplexes between the 32-bit and 64-bit versions
-Dyninst::Register emitFuncCall(opCode op,
-                      codeGen &gen,
-                      std::vector<codeGenASTPtr> &operands, 
-                      func_instance *callee)
-{
-    Dyninst::Register reg = gen.codeEmitter()->emitCall(op, gen, operands, callee);
-    return reg;
-}
-
 /*
  * emit code for op(src1,src2, dest)
  * ibuf is an instruction buffer where instructions are generated
@@ -830,24 +820,6 @@ void emitSHL(RealRegister dest, unsigned char pos, codeGen &gen)
    SET_PTR(insn, gen);
 }
 
-
-// VG(8/15/02): Emit the jcc over a conditional snippet
-void emitJmpMC(int condition, int offset, codeGen &gen)
-{
-    // What we want: 
-    //   mov eax, [original EFLAGS]
-    //   push eax
-    //   popfd
-    //   jCC target   ; CC = !condition (we jump on the negated condition)
-    
-    assert(condition >= 0 && condition <= 0x0F);
-    
-    //bperr("OC: %x, NC: %x\n", condition, condition ^ 0x01);
-    condition ^= 0x01; // flip last bit to negate the tttn condition
-    
-    gen.codeEmitter()->emitRestoreFlagsFromStackSlot(gen);
-    emitJcc(condition, offset, gen);
-}
 
 stackItemLocation getHeightOf(stackItem sitem, codeGen &gen)
 {
@@ -1320,18 +1292,8 @@ bool writeFunctionPtr(AddressSpace *p, Address addr, func_instance *f)
    return p->writeDataSpace((void *) addr, sizeof(Address), &val_to_write);   
 }
 
-bool emitStoreConst(Address addr, int imm, codeGen &gen) {
-   gen.codeEmitter()->emitStoreImm(addr, imm, gen);
-   return true;
-}
-
 bool emitAddSignedImm(Address addr, long int imm, codeGen &gen) {
    gen.codeEmitter()->emitAddSignedImm(addr, imm, gen);
-   return true;
-}
-
-bool emitSubSignedImm(Address addr, long int imm, codeGen &gen) {
-   gen.codeEmitter()->emitAddSignedImm(addr, imm * -1, gen);
    return true;
 }
 
