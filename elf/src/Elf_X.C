@@ -40,7 +40,6 @@
 #include <boost/assign/std/set.hpp>
 #include <boost/assign/std/vector.hpp>
 
-#include "common/src/headers.h"
 #include "unaligned_memory_access.h"
 #include "Elf_X.h"
 #include <iostream>
@@ -389,8 +388,8 @@ Elf_X *Elf_X::e_rand(unsigned offset)
 // Write Interface
 void Elf_X::e_ident(unsigned char *input)
 {
-    if (!is64) P_memcpy(ehdr32->e_ident, input, EI_NIDENT);
-    else       P_memcpy(ehdr64->e_ident, input, EI_NIDENT);
+    if (!is64) memcpy(ehdr32->e_ident, input, EI_NIDENT);
+    else       memcpy(ehdr64->e_ident, input, EI_NIDENT);
 }
 
 void Elf_X::e_type(unsigned short input)
@@ -1853,6 +1852,9 @@ Dyninst::Architecture Elf_X::getArch() const
                 unsigned int ef_amdgpu_mach = 0x000000ff & e_flags();
                 //cerr << " dealing with amd gpu , mach = "  << std::hex << ef_amdgpu_mach << endl;
                 switch(ef_amdgpu_mach){
+                    case 0x4f:  // gfx950
+                    case 0x5f:  // gfx9-4-generic
+                        return Dyninst::Arch_amdgpu_gfx950;
                     case 0x40:  // gfx940
                     case 0x4b:  // gfx941
                     case 0x4c:  // gfx942

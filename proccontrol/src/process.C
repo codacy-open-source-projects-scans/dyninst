@@ -1937,6 +1937,7 @@ int int_process::getAddressWidth()
       case Arch_amdgpu_gfx908:
       case Arch_amdgpu_gfx90a:
       case Arch_amdgpu_gfx940:
+      case Arch_amdgpu_gfx950:
          return 8;  
       case Arch_none:
          assert(0);
@@ -7392,7 +7393,7 @@ bool Thread::stopThread()
    int_process *proc = thrd->llproc();
 
    pthrd_printf("User stopping thread %d/%d\n", proc->getPid(), thrd->getLWP());
-   bool result = thrd->getUserState().setState(int_thread::running);
+   bool result = thrd->getUserState().setState(int_thread::stopped);
    if (!result) {
       perr_printf("Thread %d/%d was not in a stoppable state, error return from setState\n",
                   proc->getPid(), thrd->getLWP());

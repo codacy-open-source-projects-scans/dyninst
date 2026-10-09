@@ -1,0 +1,48 @@
+include_guard(GLOBAL)
+
+# Stack modification is only supported where cap_stack_mods is defined; elsewhere
+# there is no dyninstAPI_stackmod target.
+list(FIND DYNINST_PLATFORM_CAPABILITIES "-Dcap_stack_mods" cap_stack_mods_found)
+if(cap_stack_mods_found EQUAL -1)
+  return()
+endif()
+
+if(POLICY CMP0076)
+  # target_sources() converts relative paths to absolute
+  cmake_policy(SET CMP0076 NEW)
+endif()
+
+set(_headers OffsetVector.h StackAccess.h StackLocation.h StackModChecker.h
+             StackModExpr.h TMap.h)
+
+set(_sources
+    OffsetVector.C
+    StackAccess.C
+    StackLocation.C
+    StackMod.C
+    StackModExpr.C
+    StackModChecker.C
+    TMap.C)
+
+# cmake-format: off
+dyninst_library(
+  dyninstAPI_stackmod
+  INTERNAL_LIBRARY
+  SOURCE_FILES ${_sources}
+  PRIVATE_HEADER_FILES ${_headers}
+  DYNINST_INTERNAL_DEPS common parseAPI pcontrol patchAPI
+)
+
+set(_inc_dirs
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/..
+  ${CMAKE_CURRENT_SOURCE_DIR}/../ASTs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../registerSpace
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../h
+)
+# cmake-format: on
+
+target_include_directories(dyninstAPI_stackmod PRIVATE $<BUILD_INTERFACE:${_inc_dirs}>)
+
+unset(_headers)
+unset(_sources)

@@ -1,10 +1,22 @@
 # Dyninst
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/dyninst/dyninst/badge)](https://scorecard.dev/viewer/?uri=github.com/dyninst/dyninst)
+
 ## Notes
 
 * Known issues should have open issues associated with them.
 * ARMv8 (64 bit) support for dynamic instrumentation is experimental and incomplete.
   For more details about current supported functionality refer to [Dyninst Support for the ARMv8 (64 bit)](https://github.com/dyninst/dyninst/wiki/DyninstAPI-ARMv8-status).
+
+## Documentation
+
+Each component has a manual, written in LaTeX and built to PDF by the CMake
+build.  The PDFs as released for 13.0.0 are in
+[docs/v13.0.0_manuals](docs/v13.0.0_manuals); they are a snapshot, so build
+from source for anything newer.
+
+See [docs/README.md](docs/README.md) for the directory layout, how to build
+the manuals, and how to add one.
 
 ## Build DyninstAPI and its subcomponents
 
@@ -49,3 +61,14 @@ the main thread of a process
 * Stackwalker is fragile on Windows
 
 * Parsing a binary with no functions (typically a single object file) will crash at CodeObject destruction time.
+
+## Contacting the Dyninst Project
+
+Below are the mechanisms that are available for you to contact us about any
+concerns and to keep in touch with announcements related to Dyninst.
+
+| Contact | Description |
+| :---: | :--- |
+| [GitHub issues](/dyninst/dyninst/issues) | Dyninst's issue tracker for problems with building or the functioning of the Dyninst libraries including bugs or new feature requests. |
+| [Dyninst Announcements](https://groups.google.com/a/g-groups.wisc.edu/g/dyninst-announce/) | Mailing list of announcements related to Dyninst. |
+| dyninst-team@g-groups.wisc.edu           | Email address to privately contact the Dyninst Team. |

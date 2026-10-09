@@ -31,10 +31,10 @@
 #include "CFG.h"
 #include "Springboard.h"
 #include "dyninstAPI/src/debug.h"
-#include "dyninstAPI/src/codegen.h"
+#include "codegen/codegen.h"
 
 #include "dyninstAPI/src/addressSpace.h"
-#include "dyninstAPI/src/function.h"
+#include "patching/function.h"
 
 using namespace Dyninst;
 using namespace Relocation;
@@ -267,7 +267,7 @@ SpringboardBuilder::generateSpringboard(std::list<codeGen> &springboards,
 
    registerBranch(r.from, r.from + size, r.destinations, r.fromRelocatedCode, r.func, r.priority);
    if (gen.valid()) {
-       springboards.push_back(gen);
+       springboards.push_back(std::move(gen));
    }
    return Succeeded;
 }

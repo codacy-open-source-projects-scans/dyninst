@@ -28,7 +28,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "common/src/headers.h"
 #include "common/src/AuxvParser.h"
 #include "common/src/linuxKludges.h"
 #include <elf.h>
@@ -44,7 +43,8 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <string.h>
-
+#include <cassert>
+#include <fcntl.h>
 
 /**** process_vm_readv / process_vm_writev
  * Added in kernel 3.2 and some backports -- try it and check ENOSYS.
@@ -81,33 +81,6 @@ static ssize_t process_vm_writev(pid_t pid,
 }
 
 #endif /* !__GLIBC_PREREQ(2,15) */
-
-
-int P_getopt(int argc, char *argv[], const char *optstring)
-{
-  /* On linux we prepend a + character */
-  std::string newopt{"+"};
-  newopt += optstring;
-  return getopt(argc, argv, newopt.c_str());
-}
-
-int P_copy(const char *from, const char *to) {
-    std::ifstream src(from, std::ios::binary);
-    std::ofstream dst(to, std::ios::binary | std::ios::trunc);
-    dst << src.rdbuf();
-    dst.close();
-    src.close();
-    return (src && dst) ? 0 : -1;
-}
-
-
-
-#include "symbolDemangleWithCache.h"
-
-std::string P_cplus_demangle( const std::string &symbol, bool includeTypes )
-{
-    return symbol_demangle_with_cache(symbol, includeTypes);
-} /* end P_cplus_demangle() */
 
 
 bool PtraceBulkRead(Dyninst::Address inTraced, unsigned size, void *inSelf, int pid)
@@ -156,7 +129,7 @@ bool PtraceBulkRead(Dyninst::Address inTraced, unsigned size, void *inSelf, int 
       /* Read the segment containing the unaligned portion, and
          copy what was requested to DP. */
       errno = 0;
-      w = P_ptrace(PTRACE_PEEKDATA, pid, (Dyninst::Address) (ap-cnt), w, len);
+      w = ptrace(PTRACE_PEEKDATA, pid, ap-cnt, w);
       if (errno) {
          return false;
       }
@@ -174,7 +147,7 @@ bool PtraceBulkRead(Dyninst::Address inTraced, unsigned size, void *inSelf, int 
    /* Copy aligned portion */
    while (size >= (u_int)len) {
       errno = 0;
-      w = P_ptrace(PTRACE_PEEKTEXT, pid, (Dyninst::Address) ap, 0, len);
+      w = ptrace(PTRACE_PEEKTEXT, pid, ap, 0);
       if (errno) {
          return false;
       }
@@ -191,7 +164,7 @@ bool PtraceBulkRead(Dyninst::Address inTraced, unsigned size, void *inSelf, int 
       /* Read the segment containing the unaligned portion, and
          copy what was requested to DP. */
       errno = 0;
-      w = P_ptrace(PTRACE_PEEKTEXT, pid, (Dyninst::Address) ap, 0, len);
+      w = ptrace(PTRACE_PEEKTEXT, pid, ap, 0);
       if (errno) {
          return false;
       }
@@ -248,7 +221,7 @@ bool PtraceBulkWrite(Dyninst::Address inTraced, unsigned nbytes,
       /* Read the segment containing the unaligned portion, edit
          in the data from DP, and write the segment back. */
       errno = 0;
-      w = P_ptrace(PTRACE_PEEKTEXT, pid, (Dyninst::Address) (ap-cnt), 0);
+      w = ptrace(PTRACE_PEEKTEXT, pid, ap-cnt, 0);
 
       if (errno) {
          return false;
@@ -257,7 +230,7 @@ bool PtraceBulkWrite(Dyninst::Address inTraced, unsigned nbytes,
       for (unsigned i = 0; i < len-cnt && i < nbytes; i++)
          p[cnt+i] = dp[i];
 
-      if (0 > P_ptrace(PTRACE_POKETEXT, pid, (Dyninst::Address) (ap-cnt), w)) {
+      if (0 > ptrace(PTRACE_POKETEXT, pid, ap-cnt, w)) {
          return false;
       }
 
@@ -274,7 +247,7 @@ bool PtraceBulkWrite(Dyninst::Address inTraced, unsigned nbytes,
    while (nbytes >= (u_int)len) {
       assert(0 == ((Dyninst::Address)ap) % len);
       memcpy(&w, dp, len);
-      int retval =  P_ptrace(PTRACE_POKETEXT, pid, (Dyninst::Address) ap, w);
+      int retval =  ptrace(PTRACE_POKETEXT, pid, ap, w);
       if (retval < 0) {
          return false;
       }
@@ -292,7 +265,7 @@ bool PtraceBulkWrite(Dyninst::Address inTraced, unsigned nbytes,
       /* Read the segment containing the unaligned portion, edit
          in the data from DP, and write it back. */
       errno = 0;
-      w = P_ptrace(PTRACE_PEEKTEXT, pid, (Dyninst::Address) ap, 0);
+      w = ptrace(PTRACE_PEEKTEXT, pid, ap, 0);
 
       if (errno) {
          return false;
@@ -302,7 +275,7 @@ bool PtraceBulkWrite(Dyninst::Address inTraced, unsigned nbytes,
       for (unsigned i = 0; i < nbytes; i++)
          p[i] = dp[i];
 
-      if (0 > P_ptrace(PTRACE_POKETEXT, pid, (Dyninst::Address) ap, w)) {
+      if (0 > ptrace(PTRACE_POKETEXT, pid, ap, w)) {
          return false;
       }
    }

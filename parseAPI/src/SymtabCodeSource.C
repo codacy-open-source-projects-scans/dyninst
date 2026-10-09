@@ -90,6 +90,7 @@ SymtabCodeRegion::SymtabCodeRegion(
             knownData[(*sit)->getOffset()] = (*sit)->getOffset() + (*sit)->getSize();
             parsing_printf("Add known data range [%lx, %lx) from symbol %s\n", (*sit)->getOffset(), (*sit)->getOffset() + (*sit)->getSize(), (*sit)->getMangledName().c_str());
         }
+    initRelocOffsets();
 }
 
 
@@ -106,6 +107,31 @@ SymtabCodeRegion::SymtabCodeRegion(
             knownData[(*sit)->getOffset()] = (*sit)->getOffset() + (*sit)->getSize();
             parsing_printf("Add known data range [%lx, %lx) from symbol %s\n", (*sit)->getOffset(), (*sit)->getOffset() + (*sit)->getSize(), (*sit)->getMangledName().c_str());
         }
+    initRelocOffsets();
+}
+
+void
+SymtabCodeRegion::initRelocOffsets()
+{
+    // Only unlinked object files (e.g. archive members) contain
+    // relocations that have not yet been applied to the section bytes;
+    // in linked binaries (including those produced with --emit-relocs)
+    // the bytes already hold their final values.
+    if(!_symtab->isUnlinkedObjectFile()) return;
+
+    // In ET_REL files r_offset is relative to the start of the section
+    // the relocation applies to; rebase it into this region's address
+    // space (in practice unlinked sections live at 0, so low() == 0).
+    for(auto const& rel : _region->getRelocations())
+        _reloc_offsets.push_back(low() + rel.rel_addr());
+    std::sort(_reloc_offsets.begin(), _reloc_offsets.end());
+}
+
+bool
+SymtabCodeRegion::hasUnresolvedRelocs(Address lo, Address hi) const
+{
+    auto it = std::lower_bound(_reloc_offsets.begin(), _reloc_offsets.end(), lo);
+    return it != _reloc_offsets.end() && *it < hi;
 }
 
 void
@@ -647,15 +673,20 @@ SymtabCodeSource::init_linkage()
 
         // Each PLT stub is 16 byte long
         const int plt_entry_size = 16;
-        // Each PLT stub starts with a ENDBR64 instruction, which is 4 byte long,
-        // followed by a indirect jump instruction.
-        // The indirect jump instruction has a BND prefix and two byte opcode.
-        // Therefore, the offset to the PC-relative displacement is 7 bytes.
-        const int pc_rela_disp = 7;
+        // Each PLT stub is ENDBR64 (4 bytes) then an indirect jump
+        // `jmp *disp(%rip)` (opcode `ff 25`, then a 4-byte displacement). Some
+        // toolchains prefix the jump with BND (`f2 ff 25 ...`), placing the
+        // displacement at offset 7; others omit it (`ff 25 ...`), offset 6. The
+        // prefix must be detected per stub, not assumed: reading the wrong offset
+        // yields a bogus GOT address and the stub is silently left unnamed.
+        const int plt_endbr_len = 4;
         const unsigned char* buffer = (const unsigned char*)plt_sec->getPtrToRawData();
 
         // Scan each PLT stub
         for (size_t off = 0; off < plt_sec->getMemSize(); off += plt_entry_size) {
+            const int pc_rela_disp =
+                (buffer[off + plt_endbr_len] == 0xf2) ? plt_endbr_len + 3   // BND + `ff 25`
+                                                      : plt_endbr_len + 2;  // plain `ff 25`
             auto disp = Dyninst::read_memory_as<int32_t>(buffer + off + pc_rela_disp);
             Address rel_addr = plt_sec->getMemOffset() + off + pc_rela_disp + 4 /* four byte pc-relative displacment */ + disp;
             if (rel_addr_to_name.find(rel_addr) != rel_addr_to_name.end()) {

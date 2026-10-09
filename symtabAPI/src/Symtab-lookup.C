@@ -488,6 +488,7 @@ bool Symtab::findCatchBlock(ExceptionBlock &excp, Offset addr, unsigned size)
  
 bool Symtab::findRegionByEntry(Region *&ret, const Offset offset)
 {
+    ret = nullptr;
     if(regionsByEntryAddr.find(offset) != regionsByEntryAddr.end())
     {
         ret = regionsByEntryAddr[offset];
@@ -524,11 +525,12 @@ Region *Symtab::findEnclosingRegion(const Offset where)
             first = ((first + last) / 2) + 1;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 bool Symtab::findRegion(Region *&ret, std::string const& secName)
 {
+    ret = nullptr;
     for(unsigned index=0;index<regions_.size();index++)
     {
         if(regions_[index]->getRegionName() == secName)
@@ -544,15 +546,18 @@ bool Symtab::findRegion(Region *&ret, std::string const& secName)
 
 bool Symtab::findRegion(Region *&ret, const Offset addr, const unsigned long size)
 {
-   ret = NULL;
+   ret = nullptr;
    for(unsigned index=0;index<regions_.size();index++) {
       if(regions_[index]->getMemOffset() == addr && regions_[index]->getMemSize() == size) {
          if (ret) {
-	   assert((addr == 0) ||
-		  (ret->getRegionType() == Region::RT_BSS) ||
-		  (regions_[index]->getRegionType() == Region::RT_BSS));
-
-	    // Probably don't want bss
+	    // More than one region has this (addr,size). This is legitimate for a
+	    // NOBITS .bss aliasing a PROGBITS section's address, and for zero-size
+	    // marker sections placed at the same address (e.g. the empty
+	    // .gnu.offload_funcs/.gnu.offload_vars GCC emits in offload builds).
+	    // Ambiguous but not fatal: prefer a non-BSS match, report
+	    // Multiple_Region_Matches, and let the caller disambiguate (e.g. by
+	    // section name). Do NOT abort -- findRegion is library code reachable
+	    // from ordinary third-party binaries (was: assert that one match is BSS).
 	    if (ret->getRegionType() == Region::RT_BSS) {
 	      ret = regions_[index];
 	    }

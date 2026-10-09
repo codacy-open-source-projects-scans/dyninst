@@ -37,39 +37,34 @@
 #include <limits.h>
 #include "codegen/RegControl.h"
 #include "codegen/emitters/x86/IA32/EmitterIA32Dyn.h"
-#include "common/src/headers.h"
 #include "compiler_annotations.h"
 #include "compiler_diagnostics.h"
 #include <unordered_map>
 #include "dyninstAPI/src/image.h"
-#include "dyninstAPI/src/inst.h"
 #include "common/src/stats.h"
 #include "dyninstAPI/src/os.h"
 #include "dyninstAPI/src/debug.h"
-#include "dyninstAPI/src/function.h"
-#include "dyninstAPI/src/codegen.h"
+#include "patching/function.h"
+#include "codegen/codegen.h"
 #include "dyninstAPI/src/inst-x86.h"
-#include "baseTramp.h"
+#include "trampolines/baseTramp.h"
 #include "dyninstAPI/src/emit-x86.h"
-#include "dyninstAPI/src/instPoint.h" // includes instPoint-x86.h
+#include "patching/instPoint.h" // includes instPoint-x86.h
 #include "registers/x86_regs.h"
 #include "registers/x86_64_regs.h"
 #include "dyninstAPI/src/addressSpace.h"
 #include "dyninstAPI/src/binaryEdit.h"
-#include "dyninstAPI/src/dynProcess.h"
+#include "dynproc/dynProcess.h"
 #include "arch-regs-x86.h"
-#include "registerSpace.h"
+#include "registerSpace/registerSpace.h"
 
 #include "mapped_module.h"
 #include "dyninstAPI/h/BPatch_memoryAccess_NP.h"
-#include "IAPI_to_AST.h"
 #include "Expression.h"
 #include "Instruction.h"
 #include <sstream>
 #include <assert.h>
 #include "unaligned_memory_access.h"
-
-using codeGenASTPtr = Dyninst::DyninstAPI::codeGenASTPtr;
 
 class ExpandInstruction;
 class InsertNops;
@@ -731,84 +726,6 @@ unsigned char jccOpcodeFromRelOp(unsigned op, bool s)
    return 0x0;
 }
 
-/*
- * emit code for op(src1,src2, dest)
- * ibuf is an instruction buffer where instructions are generated
- * base is the next free position on ibuf where code is to be generated
- */
-
-codeBufIndex_t emitA(opCode op, Dyninst::Register src1, long dest,
-                     codeGen &gen, Dyninst::DyninstAPI::RegControl rc)
-{
-   // retval is the address of the jump (if one is created). 
-   // It's always the _start_ of the jump, which means that if we need
-   // to offset (like x86 (to - (from + insnsize))) we do it later.
-   codeBufIndex_t retval = 0;
-   
-   switch (op) {
-      case ifOp: {
-         // if src1 == 0 jump to dest
-         // src1 is a temporary
-         // dest is a target address
-         retval = gen.codeEmitter()->emitIf(src1, dest, rc, gen);
-         break;
-      }
-      case branchOp: {
-         // dest is the displacement from the current value of insn
-         // this will need to work for both 32-bits and 64-bits
-         // (since there is no JMP rel64)
-         retval = gen.getIndex();
-         insnCodeGen::generateBranch(gen, dest);
-         break;
-      }
-      default:
-         abort();        // unexpected op for this emit!
-   }
-   
-   return retval;
-}
-
-Dyninst::Register emitR(opCode op, Dyninst::Register src1, Dyninst::Register src2, Dyninst::Register dest,
-               codeGen &gen,
-               const instPoint *location)
-{
-   bool get_addr_of = (src2 != Null_Register);
-   switch (op) {
-       case getRetValOp:
-          // dest is a register where we can store the value
-          // the return value is in the saved EAX
-          gen.codeEmitter()->emitGetRetVal(dest, get_addr_of, gen);
-          if (!get_addr_of)
-             return dest;
-          break;
-       case getRetAddrOp: 
-          // dest is a register where we can store the return address
-          gen.codeEmitter()->emitGetRetAddr(dest, gen);
-          return dest;
-          break;
-       case getParamOp:
-       case getParamAtCallOp:
-       case getParamAtEntryOp:
-          // src1 is the number of the argument
-          // dest is a register where we can store the value
-          gen.codeEmitter()->emitGetParam(dest, src1, location->type(), op,
-                                          get_addr_of, gen);
-          if (!get_addr_of)
-             return dest;
-          break;
-       case loadRegOp:
-          assert(src1 == 0);
-          assert(0);
-          return dest;
-       default:
-          abort();                  // unexpected op for this emit!
-    }
-    assert(get_addr_of);
-    emitV(storeIndirOp, src2, 0, dest, gen,
-          gen.addrSpace()->getAddressWidth(), gen.addrSpace());
-    return(dest);
-}
-
 void emitSHL(RealRegister dest, unsigned char pos, codeGen &gen)
 {
    gen.markRegDefined(dest.reg());
@@ -976,225 +893,6 @@ void restoreGPRtoGPR(RealRegister src, RealRegister dest, codeGen &gen)
    restoreGPRtoReg(src, gen, &dest);
 }
 
-void emitVload(opCode op, Address src1, Dyninst::Register src2, Dyninst::Register dest,
-               codeGen &gen,
-               int size,
-               AddressSpace * /* proc */)
-{
-   if (op == loadConstOp) {
-      // dest is a temporary
-      // src1 is an immediate value 
-      // dest = src1:imm32
-       gen.codeEmitter()->emitLoadConst(dest, src1, gen);
-      return;
-   } else if (op ==  loadOp) {
-      // dest is a temporary
-      // src1 is the address of the operand
-      // dest = [src1]
-       gen.codeEmitter()->emitLoad(dest, src1, size, gen);
-      return;
-   } else if (op == loadFrameRelativeOp) {
-      // dest is a temporary
-      // src1 is the offset of the from the frame of the variable
-       gen.codeEmitter()->emitLoadOrigFrameRelative(dest, src1, gen);
-       return;
-   } else if (op == loadRegRelativeOp) {
-      // dest is a temporary
-      // src2 is the register 
-      // src1 is the offset from the address in src2
-      gen.codeEmitter()->emitLoadOrigRegRelative(dest, src1, src2, gen, true);
-      return;
-   } else if (op == loadRegRelativeAddr) {
-      // dest is a temporary
-      // src2 is the register 
-      // src1 is the offset from the address in src2
-      gen.codeEmitter()->emitLoadOrigRegRelative(dest, src1, src2, gen, false);
-      return;
-   } else if (op == loadFrameAddr) {
-       gen.codeEmitter()->emitLoadFrameAddr(dest, src1, gen);
-       return;
-   } else {
-      abort();                // unexpected op for this emit!
-   }
-}
-
-void emitVstore(opCode op, Dyninst::Register src1, Dyninst::Register src2, Address dest,
-                codeGen &gen,
-                int size,
-                AddressSpace * /* proc */)
-{
-   if (op ==  storeOp) {
-      // [dest] = src1
-      // dest has the address where src1 is to be stored
-      // src1 is a temporary
-      // src2 is a "scratch" register, we don't need it in this architecture
-       gen.codeEmitter()->emitStore(dest, src1, size, gen);
-      return;
-   } else if (op == storeFrameRelativeOp) {
-       // src1 is a temporary
-       // src2 is a "scratch" register, we don't need it in this architecture
-       // dest is the frame offset 
-       gen.codeEmitter()->emitStoreFrameRelative(dest, src1, src2, size, gen);
-       return;
-   } else {
-       abort();                // unexpected op for this emit!
-   }
-}
-
-void emitV(opCode op, Dyninst::Register src1, Dyninst::Register src2, Dyninst::Register dest,
-           codeGen &gen,
-           int size,
-           AddressSpace * /* proc */, bool s)
-{
-    assert ((op!=branchOp) && (op!=ifOp));         // !emitA
-    assert ((op!=getRetValOp) && (op!=getRetAddrOp) && 
-            (op!=getParamOp));                                  // !emitR
-    assert ((op!=loadOp) && (op!=loadConstOp));                 // !emitVload
-    assert ((op!=storeOp));                                     // !emitVstore
-    
-    if (op ==  loadIndirOp) {
-        // same as loadOp, but the value to load is already in a register
-       gen.codeEmitter()->emitLoadIndir(dest, src1, size, gen);
-    } 
-    else if (op ==  storeIndirOp) {
-        // same as storeOp, but the address where to store is already in a
-        // register
-       gen.codeEmitter()->emitStoreIndir(dest, src1, size, gen);
-    } else if (op == noOp) {
-        emitSimpleInsn(NOP, gen); // nop
-    } else if (op == saveRegOp) {
-        // Push....
-        assert(src2 == 0);
-        assert(dest == 0);
-        gen.codeEmitter()->emitPush(gen, src1);
-    } else if (op == loadRegOp) {
-        assert(src1 == 0);
-        assert(src2 == 0);
-        gen.codeEmitter()->emitPop(gen, dest);
-    } else {
-        unsigned opcode = 0;//initialize to placate gcc warnings
-        switch (op) {
-            // integer ops
-        case plusOp:
-            // dest = src1 + src2
-            // mv eax, src1
-            // add eax, src2
-            // mov dest, eax
-            opcode = 0x03; // ADD
-            break;
-            
-        case minusOp:
-            opcode = 0x2B; // SUB
-            break;
-            
-        case xorOp:
-            opcode = 0x33; // XOR
-            break;
-            
-        case timesOp:
-            if (s)
-                opcode = 0x0FAF; // IMUL
-            else
-                opcode = 0x0F74; // Unsigned Multiply
-            break;
-        case divOp: {
-           gen.codeEmitter()->emitDiv(dest, src1, src2, gen, s);
-           return;
-        }
-           // Bool ops
-        case orOp:
-           opcode = 0x0B; // OR 
-           break;
-
-        case andOp:
-           opcode = 0x23; // AND
-           break;
-
-           // rel ops
-           // dest = src1 relop src2
-        case eqOp:
-        case neOp:
-        case lessOp:
-        case leOp:
-        case greaterOp:
-        case geOp: {
-            gen.codeEmitter()->emitRelOp(op, dest, src1, src2, gen, s);
-            return;
-            break;
-        }
-        default:
-            abort();
-            break;
-        }
-        gen.codeEmitter()->emitOp(opcode, dest, src1, src2, gen);
-    }
-    return;
-}
-
-void emitImm(opCode op, Dyninst::Register src1, RegValue src2imm, Dyninst::Register dest,
-             codeGen &gen, bool s)
-{
-   if (op ==  storeOp) {
-       // this doesn't seem to ever be called from ast.C (or anywhere) - gq
-
-      // [dest] = src1
-      // dest has the address where src1 is to be stored
-      // src1 is an immediate value
-      // src2 is a "scratch" register, we don't need it in this architecture
-      emitMovImmToReg(RealRegister(REGNUM_EAX), dest, gen);
-      emitMovImmToRM(RealRegister(REGNUM_EAX), 0, src1, gen);
-   } else {
-      unsigned opcode1;
-      unsigned opcode2;
-      switch (op) {
-         // integer ops
-         case plusOp:
-            opcode1 = 0x81;
-            opcode2 = 0x0; // ADD
-            break;            
-         case minusOp:
-            opcode1 = 0x81;
-            opcode2 = 0x5; // SUB
-            break;            
-         case xorOp:
-            opcode1 = 0x81;
-            opcode2 = 0x6; // XOR
-            break;            
-         case timesOp:
-            gen.codeEmitter()->emitTimesImm(dest, src1, src2imm, gen);
-            return;
-         case divOp:
-            gen.codeEmitter()->emitDivImm(dest, src1, src2imm, gen, s);
-            return;
-         // Bool ops
-         case orOp:
-            opcode1 = 0x81;
-            opcode2 = 0x1; // OR 
-            break;            
-         case andOp:
-           opcode1 = 0x81;
-           opcode2 = 0x4; // AND
-           break;
-         // rel ops
-         // dest = src1 relop src2
-         case eqOp:
-         case neOp:
-         case lessOp:
-         case leOp:
-         case greaterOp:
-         case geOp:
-            gen.codeEmitter()->emitRelOpImm(op, dest, src1, src2imm, gen, s);
-            return;
-         default:
-          abort();
-          break;
-      }
-      gen.codeEmitter()->emitOpImm(opcode1, opcode2, dest, src1, src2imm, gen);
-   }
-   return;
-}
-
-
 bool emitPush(RealRegister reg, codeGen &gen) {
     GET_PTR(insn, gen);
     int r = reg.reg();
@@ -1221,32 +919,6 @@ bool emitPop(RealRegister reg, codeGen &gen) {
     return true;
 }
 
-void emitLoadPreviousStackFrameRegister(Address register_num,
-                                        Dyninst::Register dest,
-                                        codeGen &gen,
-                                        int){
-    gen.codeEmitter()->emitLoadOrigRegister(register_num, dest, gen);
-}
-
-// First AST node: target of the call
-// Second AST node: source of the call
-// This can handle indirect control transfers as well 
-bool AddressSpace::getDynamicCallSiteArgs(InstructionAPI::Instruction insn,
-                                          Address addr,
-                                          std::vector<codeGenASTPtr> &args)
-{
-   using namespace Dyninst::InstructionAPI;        
-   Expression::Ptr cft = insn.getControlFlowTarget();
-   ASTFactory f;
-   cft->apply(&f);
-   assert(f.m_stack.size() == 1);
-   args.push_back(f.m_stack[0]);
-   args.push_back(DyninstAPI::operandAST::Constant((void *) addr));
-   inst_printf("%s[%d]:  Inserting dynamic call site instrumentation for %s\n",
-               FILE__, __LINE__, cft->format(insn.getArch()).c_str());
-   return true;
-}
-
 /****************************************************************************/
 /****************************************************************************/
 
@@ -1258,34 +930,6 @@ int getMaxJumpSize()
 bool emitAddSignedImm(Address addr, long int imm, codeGen &gen) {
    gen.codeEmitter()->emitAddSignedImm(addr, imm, gen);
    return true;
-}
-
-Emitter *AddressSpace::getEmitter() 
-{
-   static Dyninst::DyninstAPI::EmitterIA32Dyn emitter32Dyn;
-   static Dyninst::DyninstAPI::EmitterIA32Stat emitter32Stat;
-
-#if defined(DYNINST_CODEGEN_ARCH_X86_64)
-   static EmitterAMD64Dyn emitter64Dyn;
-   static EmitterAMD64Stat emitter64Stat;
-
-   if (getAddressWidth() == 8) {
-       if (proc()) {
-           return &emitter64Dyn;
-       }
-       else {
-           assert(edit());
-           return &emitter64Stat;
-       }
-   }
-#endif
-   if (proc()) {
-       return &emitter32Dyn;
-   }
-   else {
-       assert(edit());
-       return &emitter32Stat;
-   }
 }
 
 #if defined(DYNINST_CODEGEN_ARCH_X86_64)

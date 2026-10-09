@@ -1,21 +1,20 @@
 #ifndef DYNINST_DYNINSTAPI_AST_HELPERS_H
 #define DYNINST_DYNINSTAPI_AST_HELPERS_H
 
-#include "codegen.h"
-#include "registerSpace.h"
+#include "codegen/codegen.h"
+#include "emitter.h"
+#include "registerSpace/registerSpace.h"
 
 #include <cstdint>
 #include <cstdio>
 
 #if defined(DYNINST_CODEGEN_ARCH_POWER)
-#include "emit-power.h"
 #include "inst-power.h"
 #elif defined(DYNINST_CODEGEN_ARCH_I386) || defined(DYNINST_CODEGEN_ARCH_X86_64)
 #include "emit-x86.h"
 #include "inst-x86.h"
 #elif defined(DYNINST_CODEGEN_ARCH_AARCH64)
-#include "emit-aarch64.h"
-#include "inst-aarch64.h"
+#include "codegen/emitters/aarch64/EmitterAarch64.h"
 #elif defined(DYNINST_CODEGEN_ARCH_AMDGPU_GFX908)
 #include "emit-amdgpu.h"
 #else

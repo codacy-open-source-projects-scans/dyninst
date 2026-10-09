@@ -34,7 +34,6 @@
 #include <string>
 #include <vector>
 #include "BPatch_Vector.h"
-#include "BPatch_Set.h"
 #include "BPatch_enums.h"
 #include "dyntypes.h"
 
@@ -93,7 +92,6 @@ class DYNINST_EXPORT BPatch_point {
     friend class BPatch_basicBlock;
     friend class BPatch_basicBlockLoop;
     friend class BPatch_flowGraph; // Access to setLoop
-    friend class BPatch_asyncEventHandler;
     friend class BPatch_edge;
     friend class BPatch_snippet;
     friend Dyninst::PatchAPI::Point *Dyninst::PatchAPI::convert(const BPatch_point *, BPatch_callWhen);

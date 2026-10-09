@@ -29,6 +29,7 @@ set(_public_headers
     h/mnemonics/AMDGPU/gfx908_entryIDs.h
     h/mnemonics/AMDGPU/gfx90a_entryIDs.h
     h/mnemonics/AMDGPU/gfx940_entryIDs.h
+    h/mnemonics/AMDGPU/gfx950_entryIDs.h
     h/mnemonics/IntelGPU/generic_entryIDs.h
     h/mnemonics/NVIDIA/generic_entryIDs.h
     h/Node.h
@@ -39,6 +40,7 @@ set(_public_headers
     h/registers/AMDGPU/amdgpu_gfx908_regs.h
     h/registers/AMDGPU/amdgpu_gfx90a_regs.h
     h/registers/AMDGPU/amdgpu_gfx940_regs.h
+    h/registers/AMDGPU/amdgpu_gfx950_regs.h
     h/registers/cuda_regs.h
     h/registers/ppc32_regs.h
     h/registers/ppc64_regs.h
@@ -65,20 +67,19 @@ set(_private_headers
     src/debug_common.h
     src/dthread.h
     src/dyn_register.h
-    src/freebsdHeaders.h
     src/freebsdKludges.h
-    src/headers.h
     src/ia32_entry.h
     src/ia32_locations.h
     src/ia32_memacc.h
     src/ia32_prefixes.h
     src/instruction-x86.h
     src/IntervalTree.h
-    src/linuxHeaders.h
+    src/LinearVariable.h
     src/linuxKludges.h
     src/lprintf.h
     src/lru_cache.h
     src/MappedFile.h
+    src/bitmath.h
     src/registers/MachRegisterCache.h
     src/NodeIterator.h
     src/ntHeaders.h
@@ -138,8 +139,8 @@ elseif(DYNINST_OS_Windows)
   list(APPEND _sources src/ntKludges.C src/addrtranslate-win.C)
 endif()
 
-if(${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
-  if(${CMAKE_CXX_COMPILER_VERSION} MATCHES "^[789](\.|$)")
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
+  if("${CMAKE_CXX_COMPILER_VERSION}" MATCHES "^[789](\.|$)")
     # Disable var-tracking-assignments for arch-x86.C for gcc 7, 8, & 9. The default
     # max size for these compilers is too small so it fails, adjusting it using
     #

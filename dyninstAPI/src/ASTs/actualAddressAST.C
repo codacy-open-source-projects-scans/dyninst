@@ -1,6 +1,6 @@
 #include "ast_helpers.h"
 #include "addressAST.h"
-#include "codegen.h"
+#include "codegen/codegen.h"
 #include "opcode.h"
 
 #include <boost/make_shared.hpp>
@@ -16,7 +16,7 @@ bool actualAddressAST::generateCode_phase2(codeGen &gen, Dyninst::Address &,
     return false;
   }
 
-  emitVload(loadConstOp, gen.currAddr(), retReg, retReg, gen);
+  gen.emitter()->emitVload(loadConstOp, gen.currAddr(), retReg, retReg, gen);
 
   return true;
 }

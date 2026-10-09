@@ -30,12 +30,12 @@
 
 #include "addressSpace.h"
 #include "codeRange.h"
-#include "dynProcess.h"
-#include "function.h"
+#include "dynproc/dynProcess.h"
+#include "patching/function.h"
 #include "binaryEdit.h"
-#include "baseTramp.h"
-
-#include "instPoint.h"
+#include "trampolines/baseTramp.h"
+#include "common/src/dyninst_filesystem.h"
+#include "patching/instPoint.h"
 #include "debug.h"
 
 // Two-level codeRange structure
@@ -54,7 +54,7 @@
 #include <boost/tuple/tuple.hpp>
 
 #include "PatchMgr.h"
-#include "Patching.h"
+#include "patching/Patching.h"
 #include "Relocation/DynAddrSpace.h"
 #include "Relocation/DynPointMaker.h"
 #include "Relocation/DynObject.h"
@@ -62,8 +62,8 @@
 
 #include <boost/bind/bind.hpp>
 
-#include "dynThread.h"
-#include "pcEventHandler.h"
+#include "dynproc/dynThread.h"
+#include "dynproc/pcEventHandler.h"
 #include "unaligned_memory_access.h"
 #include "common/h/util.h"
 
@@ -381,8 +381,6 @@ void AddressSpace::initializeHeap() {
    // (re)initialize everything 
    heap_.heapActive.clear();
    heap_.heapFree.resize(0);
-   heap_.disabledList.resize(0);
-   heap_.disabledListTotalMem = 0;
    heap_.freed = 0;
    heap_.totalFreeMemAvailable = 0;
 
@@ -1067,11 +1065,9 @@ void trampTrapMappings::writeToBuffer(unsigned char *buffer, unsigned long val,
       //Currently only support 64-bit mutators with 32-bit mutatees
       assert(addr_width == 4);
       assert(sizeof(Address) == 8);
-#if defined(cap_32_64)
       assert(val <= numeric_limits<uint32_t>::max() && "val more than 32 bits");
       write_memory_as(buffer, static_cast<uint32_t>(val));
       return;
-#endif
    }
    write_memory_as(buffer, static_cast<uint64_t>(val));
 }
@@ -1664,11 +1660,13 @@ bool AddressSpace::relocateInt(FuncSet::const_iterator begin, FuncSet::const_ite
 
   relocation_cerr << "Debugging CodeMover (pre-transform)" << endl;
   relocation_cerr << cm->format() << endl;
+  progress_printf("relocate: applying instrumentation transforms\n");
   transform(cm);
 
   relocation_cerr << "Debugging CodeMover" << endl;
   relocation_cerr << cm->format() << endl;
 
+  progress_printf("relocate: generating code\n");
   relocation_cerr << "  Entering code generation loop" << endl;
   Address baseAddr = generateCode(cm, nearTo);
   if (!baseAddr) {
@@ -1690,6 +1688,7 @@ bool AddressSpace::relocateInt(FuncSet::const_iterator begin, FuncSet::const_ite
     return false;
 
   // Now handle patching; AKA linking
+  progress_printf("relocate: patching jumps/springboards\n");
   relocation_cerr << "  Patching in jumps to generated code" << endl;
 
   if (!patchCode(cm, spb)) {
@@ -1824,6 +1823,12 @@ Address AddressSpace::generateCode(CodeMover::Ptr cm, Address nearTo) {
     return 0;
   }
 
+  // Rewrite-progress reporting (DYNINST_DEBUG_PROGRESS). The loop below is an
+  // address-fixpoint: emit all relocated code, and if it does not fit the
+  // allocated space, free and retry. On a large rewrite each pass re-emits
+  // millions of blocks, so report each attempt.
+  unsigned emitAttempt = 0;
+  progress_printf("relocate: emitting relocated code (address fixpoint)\n");
   while (1) {
      relocation_cerr << "   Attempting to allocate " << cm->size() << "bytes" << endl;
     unsigned size = cm->size();
@@ -1834,15 +1839,16 @@ Address AddressSpace::generateCode(CodeMover::Ptr cm, Address nearTo) {
         size = 1;
     }
     baseAddr = inferiorMalloc(size, anyHeap, nearTo);
-    
-    
+    progress_printf("relocate: emit attempt %u (base=0x%lx, size=%u bytes)\n",
+                    ++emitAttempt, (unsigned long)baseAddr, size);
+
     relocation_cerr << "   Calling CodeMover::relocate" << endl;
     if (!cm->relocate(baseAddr)) {
        // Whoa
        relocation_cerr << "   ERROR: CodeMover failed relocation!" << endl;
        return 0;
     }
-    
+
     // Either attempt to expand or shrink...
     relocation_cerr << "   Calling inferiorRealloc to fit new size " << cm->size() 
 		    << ", current base addr is " 
@@ -2179,4 +2185,46 @@ unsigned AddressSpace::getAddressWidth() const {
     }
     // We can call this before we've attached...best effort guess
     return sizeof(Address);
+}
+
+bool AddressSpace::getDyninstRTLibName() {
+  if(!dyninstRT_name.empty()) {
+    return true;
+  }
+
+  namespace df = Dyninst::filesystem;
+
+  if(auto *name = getenv("DYNINSTAPI_RT_LIB")) {
+    dyninstRT_name = df::canonicalize(name);
+  } else {
+    showErrorCallback(101, "DYNINSTAPI_RT_LIB not found in environment\n");
+    return false;
+  }
+
+#ifndef os_windows
+
+  if(getAOut()->isStaticExec()) {
+    auto tmp = df::strip_all_extensions(dyninstRT_name);
+    dyninstRT_name = df::replace_extension(tmp, ".a");
+  }
+
+#endif
+
+  // Instrumenting a 32-bit binary on a 64-bit host needs the 32-bit runtime
+  if(getAddressWidth() == 4 && (sizeof(void *) == 8)) {
+    auto rt32 = "_m32";
+    if(dyninstRT_name.find(rt32) == std::string::npos) {
+      dyninstRT_name = df::append_filename_suffix(dyninstRT_name, rt32);
+    }
+  }
+
+  if(!Dyninst::filesystem::exists(dyninstRT_name)) {
+    auto msg = "DYNINSTAPI_RT_LIB='" + dyninstRT_name + "' does not exist\n";
+    showErrorCallback(101, msg);
+    return false;
+  }
+
+  startup_cerr << "Dyninst RT Library name: '" << dyninstRT_name << "'\n";
+
+  return true;
 }

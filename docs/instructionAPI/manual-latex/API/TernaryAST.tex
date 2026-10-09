@@ -1,0 +1,59 @@
+\subsection{Class TernaryAST}
+\label{sec:TernaryAST}
+
+\declaredin{Ternary.h}
+
+THIS CLASS IS ONLY PARTIALLY IMPLEMENTED.
+
+A \code{TernaryAST} object represents a conditional expression
+\code{cond ? first : second}, whose three operands are themselves
+\code{Expression}s and are reachable as the public members \code{cond},
+\code{first} and \code{second}.
+
+Only \code{format} does anything. The rest of the \code{Expression} interface
+is stubbed: \code{isUsed}, \code{bind} and \code{isStrictEqual} return
+\code{false} whatever they are given, and \code{apply} ignores its visitor, so
+a \code{Visitor} walking an instruction never reaches the operands of a
+\code{TernaryAST}.
+
+\begin{apient}
+  typedef boost::shared_ptr<TernaryAST> Ptr;
+\end{apient}
+\apidesc{ A type definition for a reference-counted pointer to a \code{TernaryAST}. }
+
+\begin{apient}
+  TernaryAST(Expression::Ptr cond,
+             Expression::Ptr first,
+             Expression::Ptr second,
+             Result_Type result_type);
+\end{apient}
+\apidesc{
+  Construct the conditional expression \code{cond ? first : second}, whose
+  result has type \code{result\_type}.
+}
+
+\begin{apient}
+  bool isUsed(Expression::Ptr findMe) const;
+\end{apient}
+\apidesc{
+  Not implemented; returns \code{false} for any \code{findMe}.
+}
+
+\begin{apient}
+  std::string format(formatStyle how = defaultStyle) const;
+\end{apient}
+\apidesc{
+  Returns the expression written as \code{(COND?FIRST:SECOND)}, with each
+  operand formatted in turn and the whole converted to upper case.
+}
+
+\begin{apient}
+  bool operator<(const TernaryAST& rhs) const;
+\end{apient}
+\apidesc{
+  Not implemented; returns \code{false} for any \code{rhs}, so
+  \code{TernaryAST} objects cannot be ordered and must not be put into sets or
+  other sorted containers that rely on this operator.
+}
+
+

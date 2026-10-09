@@ -10,6 +10,11 @@ if(POLICY CMP0144)
   cmake_policy(SET CMP0144 NEW)
 endif()
 
+# Only interpret if() arguments as variables or keywords when unquoted.
+if(POLICY CMP0054)
+  cmake_policy(SET CMP0054 NEW)
+endif()
+
 set(DYNINST_MAJOR_VERSION 13)
 set(DYNINST_MINOR_VERSION 0)
 set(DYNINST_PATCH_VERSION 0)
@@ -55,6 +60,10 @@ if(DYNINST_ENABLE_CAPSTONE)
   include(DyninstCapstone)
 endif()
 
+if(DYNINST_ENABLE_ZYDIS)
+  include(DyninstZydis)
+endif()
+
 add_subdirectory(common)
 add_subdirectory(elf)
 add_subdirectory(dwarf)
@@ -67,11 +76,13 @@ add_subdirectory(stackwalk)
 add_subdirectory(patchAPI)
 add_subdirectory(dyninstAPI)
 add_subdirectory(dynC_API)
+
+add_subdirectory(docs)
 add_subdirectory(parseThat)
 add_subdirectory(dyninstAPI_RT)
 
 if(DYNINST_ENABLE_TESTS)
-  enable_testing()
+  include(CTest)
   message(STATUS "Enabling tests")
   add_subdirectory(tests)
 endif()

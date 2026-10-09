@@ -1,0 +1,87 @@
+\subsection{Class FunctionBase}
+\label{FunctionBase}
+
+\declaredin{Function.h}
+
+The \code{FunctionBase} class provides a common interface that can represent either a regular function or an inlined function.
+
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+Method name & Return type & Method description \\
+\midrule
+getModule & const Module * & Module this function belongs to. \\
+getSize & unsigned & Size encoded in the symbol table; may not be actual function size. \\
+getRegion & Region * & Region containing this function. \\
+getReturnType & Type * & Type representing the return type of the function. \\
+getName & std::string & Returns primary name of the function (first mangled name or DWARF name) \\
+\bottomrule
+\end{tabularx}
+
+
+\begin{apient}
+bool addMangledName(std::string name,
+                    bool isPrimary,
+                    bool isDebug = false);
+\end{apient}
+\apidesc{
+This method adds a mangled name \code{name} to the function. If \code{isPrimary} is \code{true} then it becomes the default name for the function.
+This method returns \code{true} on success and \code{false} on failure.
+}
+
+\begin{apient}
+bool addPrettyName(std::string name,
+                   bool isPrimary,
+                   bool isDebug = false);
+\end{apient}
+\apidesc{
+This method adds a pretty name \code{name} to the function. If \code{isPrimary} is \code{true} then it becomes the default name for the function.
+This method returns \code{true} on success and \code{false} on failure.
+}
+
+\begin{apient}
+bool getLocalVariables(std::vector<localVar*>& vars);
+\end{apient}
+\apidesc{
+This method returns the local variables in the function. \code{vars} contains the list of variables found.
+If there is no debugging information present then it returns \code{false} with the
+error code set to \code{NO\_DEBUG\_INFO} accordingly. Otherwise it returns \code{true}.
+}
+
+\begin{apient}
+std::vector<VariableLocation>& getFramePtr();
+\end{apient}
+\apidesc{
+This method returns a list of frame pointer offsets (abstract top of the stack) for the function. See the \code{VariableLocation} class description for more information.
+}
+
+\begin{apient}
+bool getParams(std::vector<localVar*>& params);
+\end{apient}
+\apidesc{
+This method returns the parameters to the function. \code{params} contains the list of parameters.
+If there is no debugging information present then it returns \code{false} with the
+error code set to \code{NO\_DEBUG\_INFO} accordingly. Returns \code{true} on success.
+}
+
+\begin{apient}
+bool findLocalVariable(std::vector<localVar*>& vars,
+                       std::string name);
+\end{apient}
+\apidesc{
+This method returns a list of local variables within a function that have name \code{name}. \code{vars} contains the list of variables found.
+Returns \code{true} on success and \code{false} on failure.
+}
+
+\begin{apient}
+FunctionBase* getInlinedParent();
+\end{apient}
+\apidesc{
+Gets the function that this function is inlined into, if any. Returns \code{nullptr} if there is no parent.
+}
+
+\begin{apient}
+const InlineCollection& getInlines();
+\end{apient}
+\apidesc{
+Gets the set of functions inlined into this one (possibly empty).
+}

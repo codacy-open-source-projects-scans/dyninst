@@ -1,0 +1,46 @@
+\declaredin{BPatch\_instruction.h}
+
+This class represents a machine instruction. It contains information
+that describes the memory accesses the instruction makes: their type
+(read, write, read/write, or prefetch) and, through
+\code{BPatch\_memoryAccess}, the effective address and the number of
+bytes transferred. An instruction may make more than one access;
+\code{which} selects among them.
+
+\begin{apient}
+  bool isALoad(int which = 0) const;
+\end{apient}
+
+\apidesc{
+  Return true if the memory access is a load (memory is read into a register).
+}
+
+\begin{apient}
+  bool isAStore(int which = 0) const;
+\end{apient}
+
+\apidesc{
+  Return true if the memory access is write. Some machine
+  instructions may both load and store.
+}
+
+\begin{apient}
+  bool isAPrefetch_NP(int which = 0) const;
+\end{apient}
+
+\apidesc{
+  Return true if memory access is a prefetch (i.e, it has no
+  observable effect on user registers). It this returns true,
+  the instruction is considered neither load nor store. Prefetches
+  are detected only on IA32.
+}
+
+\begin{apient}
+  int prefetchType_NP(int which = 0) const;
+\end{apient}
+
+\apidesc{
+  If the memory access is a prefetch, this method returns a platform
+  specific prefetch type.
+}
+

@@ -1,0 +1,30 @@
+\declaredin{Event.h}
+
+An \code{EventBreakpoint} triggers when the target process encounters
+a breakpoint
+inserted by ProcControlAPI.
+
+Similar to EventStop, EventBreakpoint will explicitly move the thread or process
+to a stopped state. Returning cbDefault from a callback function that has
+received EventBreakpoint will leave the target process in a stopped state
+rather than restore it to the pre-event state.
+
+Associated EventType Code: \code{Breakpoint}
+
+\begin{apient}
+  Dyninst::Address getAddress() const;
+\end{apient}
+
+\apidesc{
+  This function returns the address at which the breakpoint was hit.
+}
+
+\begin{apient}
+  void getBreakpoints(std::vector<Breakpoint::const_ptr>& b) const;
+\end{apient}
+
+\apidesc{
+  This function fills b with pointers to the Breakpoints that were hit. Since
+  it is possible to insert multiple Breakpoints at the same location, it is
+  possible for this function to add more than one Breakpoint to b.
+}

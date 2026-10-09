@@ -44,8 +44,7 @@
 #include "common/h/SymReader.h"
 #include "int_event.h"
 #include "Mailbox.h"
-
-#include "boost/filesystem.hpp"
+#include "common/src/dyninst_filesystem.h"
 
 using namespace std;
 
@@ -946,10 +945,52 @@ td_thragent_t *thread_db_process::getThreadDBAgent() {
     return threadAgent;
 }
 
-static string stripLibraryName(const char *libname)
+/*
+ * The canonical path of a loaded object, or the link-map name if it cannot be resolved.
+ *
+ * The symbol reader factory caches by path and AddressTranslate canonicalises before
+ * opening, so a raw link-map name misses that cache and parses the file again -- the two
+ * spellings differ wherever a library directory is a symlink.
+ * Dyninst::filesystem::canonicalize() yields an empty string on failure, which is not
+ * openable.
+ */
+static std::string canonicalPath(const std::string &name)
 {
-   boost::filesystem::path p(libname);
-   return p.filename().string();
+   std::string canonical = Dyninst::filesystem::canonicalize(name);
+   return canonical.empty() ? name : canonical;
+}
+
+/*
+ * The DT_SONAME a loaded object declares, or an empty string if it declares none.
+ * Memoised per link-map name: reading it parses the file.
+ */
+const std::string &thread_db_process::getLibSOName(int_library *lib)
+{
+   const std::string &name = lib->getName();
+
+   auto cached = soname_cache.find(name);
+   if (cached != soname_cache.end())
+      return cached->second;
+
+   std::string soname;
+   SymReader *reader = getSymReader()->openSymbolReader(canonicalPath(name));
+   if (reader) {
+      soname = reader->getSOName();
+      /*
+       * Do NOT close this reader.  DwarfFrameParser keeps a process-global cache
+       * (dwarf/src/dwarfFrameParser.C) keyed on an object's raw Dwarf and Elf handles,
+       * holds them without owning them, and never evicts.  Releasing the last reference to
+       * a library destroys its Symtab and ends those handles while that cache still points
+       * at them.
+       * The link-map walk in common/src/addrtranslate-sysv.C and the openSymbolReader()
+       * below both leave their readers open for the same reason.
+       */
+   } else {
+      pthrd_printf("Failed to open symbol reader for %s while reading its SONAME\n",
+                   name.c_str());
+   }
+
+   return soname_cache.insert(std::make_pair(name, soname)).first->second;
 }
 
 ps_err_e thread_db_process::getSymbolAddr(const char *objName, const char *symName,
@@ -968,14 +1009,71 @@ ps_err_e thread_db_process::getSymbolAddr(const char *objName, const char *symNa
     {
        // FreeBSD implementation doesn't set objName
        const char *name_c = objName ? objName : getThreadLibName(symName);
-       std::string name = stripLibraryName(name_c);
+       std::string name = Dyninst::filesystem::extract_filename(name_c);
 
-       for (set<int_library *>::iterator i = memory()->libs.begin(); i != memory()->libs.end(); i++) {
-          int_library *l = *i;
-          if (stripLibraryName(l->getName().c_str()) ==  name) {
-             lib = l;
+       /*
+        * libthread_db asks for objects by SONAME (LIBPTHREAD_SO is "libpthread.so.0"),
+        * whereas the names we hold come from the link map, i.e. the path the loader
+        * actually opened.  Usually the loader reached the file through its SONAME-named
+        * symlink and the two agree, so compare the file name first: that costs nothing
+        * and answers the common case.
+        */
+       for (auto candidate : memory()->libs) {
+          if (Dyninst::filesystem::extract_filename(candidate->getName()) == name) {
+             lib = candidate;
              break;
           }
+       }
+
+       /*
+        * The two disagree when the loader resolved the dependency somewhere else --
+        * glibc-hwcaps serves libpthread.so.0 out of a microarchitecture directory under a
+        * version-stamped name, and an ld.so.cache entry or an audit library can redirect one
+        * just as well.  The SONAME is a property of the file rather than of the path, so fall
+        * back to the name the object declares.  Without this no thread agent is created, no
+        * thread event is ever delivered, and the failure is silent.
+        *
+        * Only objects isSupportedThreadLib() accepts are considered: reading a SONAME parses
+        * the file, and this runs on every create and attach, so an unrestricted scan would
+        * parse every loaded library whenever the requested object is absent -- which is the
+        * normal case for a process that is not threaded.  That predicate is already the
+        * "is this the thread library" test and already tolerates version-stamped names.
+        */
+       if (!lib && !name.empty()) {
+          for (auto candidate : memory()->libs) {
+             if (!isSupportedThreadLib(candidate->getName()))
+                continue;
+             if (getLibSOName(candidate) == name) {
+                pthrd_printf("Matched requested object %s to %s by SONAME\n",
+                             name.c_str(), candidate->getName().c_str());
+                lib = candidate;
+                break;
+             }
+          }
+       }
+    }
+
+    /*
+     * Since glibc 2.34 the thread library is part of libc.so.6 and libpthread.so.0 is a
+     * stub without the symbols; a binary built against such a glibc usually does not load
+     * the stub at all.  libthread_db still asks for "libpthread.so.0" (it has no other name
+     * for it), so when that object is absent, or is present but lacks the symbol, answer
+     * from the C library.  gdb goes further and ignores the object name entirely; the
+     * narrower fallback keeps the lookup where it was for every other request.
+     */
+    /*
+     * glibc >= 2.34 keeps them in two places: libc.so.6 has most, and the dynamic loader
+     * has the ones the initial thread needs before libc is mapped (__nptl_initial_report_events
+     * among them).  Try the C library first, then the loader.
+     */
+    std::vector<int_library *> fallbacks;
+    if (!plat_isStaticBinary()) {
+       if (int_library *clib = findCLibrary()) fallbacks.push_back(clib);
+       if (int_library *ld = findLoader()) fallbacks.push_back(ld);
+       if (NULL == lib && !fallbacks.empty()) {
+          pthrd_printf("Requested object %s is not loaded, looking for %s in the C library / loader\n",
+                       objName ? objName : "NULL", symName ? symName : "NULL");
+          lib = fallbacks.front();
        }
     }
 
@@ -984,7 +1082,7 @@ ps_err_e thread_db_process::getSymbolAddr(const char *objName, const char *symNa
        return PS_ERR;
     }
 
-    objSymReader = getSymReader()->openSymbolReader(lib->getName());
+    objSymReader = getSymReader()->openSymbolReader(canonicalPath(lib->getName()));
     if( NULL == objSymReader ) {
         perr_printf("Failed to open symbol reader for %s\n",
                     lib->getName().c_str());
@@ -993,6 +1091,24 @@ ps_err_e thread_db_process::getSymbolAddr(const char *objName, const char *symNa
     }
 
     Symbol_t lookupSym = objSymReader->getSymbolByName(string(symName));
+
+    for (auto fb : fallbacks) {
+       if (objSymReader->isValidSymbol(lookupSym) || fb == lib)
+          continue;
+       // The object libthread_db named (or our first guess) lacks the symbol: a stub
+       // libpthread.so.0, or a loader-resident symbol asked for in libpthread's name.
+       SymReader *fbReader = getSymReader()->openSymbolReader(canonicalPath(fb->getName()));
+       if (!fbReader)
+          continue;
+       Symbol_t fbSym = fbReader->getSymbolByName(string(symName));
+       if (fbReader->isValidSymbol(fbSym)) {
+          pthrd_printf("%s has no symbol %s, found it in %s\n",
+                       lib->getName().c_str(), symName ? symName : "NULL", fb->getName().c_str());
+          lib = fb;
+          objSymReader = fbReader;
+          lookupSym = fbSym;
+       }
+    }
 
     if( !objSymReader->isValidSymbol(lookupSym) ) {
        pthrd_printf("thread_db getSymbolAddr(%s, %s) = none\n", objName ? objName : "NULL",
@@ -1066,8 +1182,58 @@ async_ret_t thread_db_process::post_attach(bool wasDetached, set<response::ptr> 
    return aret_success; //Swallow these errors, thread_db failure does not bring down rest of startup
 }
 
+bool thread_db_process::isCLibraryName(const std::string &path)
+{
+   std::string base = Dyninst::filesystem::extract_filename(path);
+   // libc.so.6, and the versioned libc-2.NN.so of glibc before 2.34
+   return base == "libc.so.6" || base.compare(0, 8, "libc.so.") == 0 || base.compare(0, 5, "libc-") == 0;
+}
+
+int_library *thread_db_process::findCLibrary()
+{
+   for (auto candidate : memory()->libs) {
+      if (isCLibraryName(candidate->getName()))
+         return candidate;
+   }
+   // Resolved through some other path (glibc-hwcaps, a redirected cache entry): go by SONAME,
+   // but only for names that look like a C library, since reading a SONAME parses the file.
+   for (auto candidate : memory()->libs) {
+      std::string base = Dyninst::filesystem::extract_filename(candidate->getName());
+      if (base.compare(0, 4, "libc") != 0)
+         continue;
+      if (getLibSOName(candidate) == "libc.so.6")
+         return candidate;
+   }
+   return NULL;
+}
+
+bool thread_db_process::isLoaderName(const std::string &path)
+{
+   std::string base = Dyninst::filesystem::extract_filename(path);
+   // ld-linux-x86-64.so.2, ld-linux-aarch64.so.1, ld64.so.2 (ppc64), ld-2.NN.so, ld.so.1
+   return base.compare(0, 9, "ld-linux-") == 0 || base.compare(0, 5, "ld64.") == 0 ||
+          base.compare(0, 3, "ld-") == 0 || base.compare(0, 6, "ld.so.") == 0;
+}
+
+int_library *thread_db_process::findLoader()
+{
+   for (auto candidate : memory()->libs) {
+      if (isLoaderName(candidate->getName()))
+         return candidate;
+   }
+   return NULL;
+}
+
 bool thread_db_process::isSupportedThreadLib(string libName) {
-   return (libName.find("libpthread") != string::npos);
+   /*
+    * glibc 2.34 merged libpthread into libc.so.6: the thread library's symbols live there,
+    * libpthread.so.0 is a stub, and a binary built against a newer glibc does not load it
+    * at all.  So the C library is a thread library too.  On an older glibc the C library
+    * loads before libpthread and lacks the symbols; initThreadDB then gets TD_NOLIBTHREAD
+    * ("not multithreaded yet") and is tried again when libpthread arrives, exactly as a
+    * process that has not loaded libpthread yet is handled today.
+    */
+   return libName.find("libpthread") != string::npos || isCLibraryName(libName);
 }
 
 void thread_db_process::addThreadDBHandlers(HandlerPool *hpool) {

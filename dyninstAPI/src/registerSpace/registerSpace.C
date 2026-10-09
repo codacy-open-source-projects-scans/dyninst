@@ -31,36 +31,34 @@
 // $Id: registerSpace.C,v 1.25 2008/10/27 17:23:53 mlam Exp $
 
 #include "dyninstAPI/src/image.h"
-#include "dyninstAPI/src/inst.h"
-#include "dyninstAPI/src/instPoint.h"
+#include "patching/instPoint.h"
 #include "dyninstAPI/src/debug.h"
 #include "dyninstAPI/src/addressSpace.h"
 #include "arch-regs-x86.h"
-#include "dyninstAPI/src/function.h"
+#include "patching/function.h"
 #include "dyninstAPI/src/mapped_object.h"
-#include "registerSpace.h"
-
+#include "registerSpace/registerSpace.h"
+#include "emitter.h"
 #include "dyninstAPI/h/BPatch.h"
-#include "dyninstAPI/src/BPatch_collections.h"
+#include "BPatch_collections.h"
 #include "dyninstAPI/h/BPatch_type.h"
-#include "dyninstAPI/src/BPatch_libInfo.h" // For instPoint->BPatch_point mapping
+#include "BPatch_libInfo.h" // For instPoint->BPatch_point mapping
 
 #include "dyninstAPI/h/BPatch_point.h"
 #include "dyninstAPI/h/BPatch_memoryAccess_NP.h"
 
 #include "liveness.h"
-#include "dyninstAPI/src/RegisterConversion.h"
+#include "registerSpace/RegisterConversion.h"
 #include <map>
 
 #if defined(DYNINST_CODEGEN_ARCH_POWER)
 #include "dyninstAPI/src/inst-power.h"
-#include "dyninstAPI/src/emit-power.h"
 #elif defined(DYNINST_CODEGEN_ARCH_I386) || defined(DYNINST_CODEGEN_ARCH_X86_64)
 #include "dyninstAPI/src/inst-x86.h"
 #include "dyninstAPI/src/emit-x86.h"
 #elif defined(DYNINST_CODEGEN_ARCH_AARCH64)
 #include "dyninstAPI/src/inst-aarch64.h"
-#include "dyninstAPI/src/emit-aarch64.h"
+#include "codegen/emitters/aarch64/EmitterAarch64.h"
 #elif defined(DYNINST_CODEGEN_ARCH_AMDGPU_GFX908)
 #include "arch-amdgpu.h"
 #include "dyninstAPI/src/emit-amdgpu.h"
@@ -552,24 +550,35 @@ void registerSpace::cleanSpace() {
 
 bool registerSpace::readProgramRegister(codeGen &gen,
                                         Register source,
-                                        Register destination,
-                                        unsigned
-#if !defined(DYNINST_CODEGEN_ARCH_POWER)
-                                        size
-#endif
-)
+                                        Register destination)
 {
-#if !defined(DYNINST_CODEGEN_ARCH_POWER)
-    emitLoadPreviousStackFrameRegister((Address)source,
-                                       destination,
-                                       gen,
-                                       size);
+  switch (gen.getArch()) {
+  case Arch_x86:
+  case Arch_x86_64:
+  case Arch_aarch64: {
+    gen.codeEmitter()->emitLoadOrigRegister((Address)source, destination, gen);
     return true;
-#elif defined(DYNINST_CODEGEN_ARCH_AARCH64)
-//#warning "This fucntion is not implemented yet!"
-		assert(0);
-		return false;
-#else
+  }
+
+  case Arch_ppc32:
+  case Arch_ppc64:
+    // Implemented below
+    break;
+
+  case Arch_none:
+  case Arch_aarch32:
+  case Arch_riscv64:
+  case Arch_cuda:
+  case Arch_amdgpu_gfx908:
+  case Arch_amdgpu_gfx90a:
+  case Arch_amdgpu_gfx940:
+  case Arch_amdgpu_gfx950:
+  case Arch_intelGen9:
+    regalloc_printf("readProgramRegister not supported for %s\n",
+                    Dyninst::getArchitectureName(gen.getArch()));
+    return false;
+  }
+
     // Real version that uses stored information
 
     // First step: identify the registerSlot that contains information
@@ -610,8 +619,6 @@ bool registerSpace::readProgramRegister(codeGen &gen,
         return false;
         break;
     }
-#endif
-
 }
 bool registerSpace::writeProgramRegister(codeGen &gen,
                                          Register destination,

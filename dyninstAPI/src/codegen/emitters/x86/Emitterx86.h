@@ -35,7 +35,7 @@
  *  Common code for emitting instructions on i386 and x86_64
  */
 
-#include "codegen.h"
+#include "codegen/codegen.h"
 #include "dyn_register.h"
 #include "dyntypes.h"
 #include "emitter.h"
@@ -48,11 +48,28 @@ namespace Dyninst { namespace DyninstAPI {
 
     virtual ~Emitterx86() = default;
 
+    codeBufIndex_t emitA(opCode op, Dyninst::Register src1, long dst, codeGen &gen, Dyninst::DyninstAPI::RegControl rc) final override;
+
+    Dyninst::Register emitR(opCode op, Dyninst::Register src1, Dyninst::Register src2, Dyninst::Register dst,
+                            codeGen &gen, const instPoint *location) final override;
+
+    // for general arithmetic and logic operations which return nothing
+    void emitV(opCode op, Dyninst::Register src1, Dyninst::Register src2, Dyninst::Register dst,
+               codeGen &gen, int size = 4, AddressSpace * proc = NULL, bool s = true) final override;
+
+    void emitVload(opCode op, Dyninst::Address src1, Dyninst::Register src2, Dyninst::Register dst,
+                   codeGen &gen, int size = 4, AddressSpace * proc = NULL) final override;
+
+    void emitVstore(opCode op, Dyninst::Register src1, Dyninst::Register src2, Dyninst::Address dst,
+                    codeGen &gen, int size = 4, AddressSpace * proc = NULL) final override;
+
     virtual bool emitCallInstruction(codeGen &, func_instance *, Register) = 0;
 
     void emitAddrSpecLoad(const BPatch_addrSpec_NP *as, Dyninst::Register dest, int stackShift, codeGen &gen) override final;
 
     void emitCountSpecLoad(const BPatch_countSpec_NP *as, Dyninst::Register dest, codeGen &gen) override;
+
+    void emitImm(opCode op, Dyninst::Register src, Dyninst::RegValue src2imm, Dyninst::Register dst, codeGen &gen, bool isSigned = true) final override;
 
     virtual void emitLEA(Register base, Register index, unsigned int scale, int disp, Register dest,
                          codeGen &gen) = 0;
@@ -71,6 +88,9 @@ namespace Dyninst { namespace DyninstAPI {
     Address getInterModuleFuncAddr(func_instance *func, codeGen &gen) override;
 
     Address getInterModuleVarAddr(const image_variable *var, codeGen &gen) override;
+
+  protected:
+    bool can_optimize_as_shift(RegValue val, uint8_t max_num_bits) const;
   };
 
   static constexpr auto IA32_EMULATE = 1000;

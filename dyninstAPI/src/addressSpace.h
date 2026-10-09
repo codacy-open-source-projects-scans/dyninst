@@ -33,11 +33,11 @@
 #ifndef ADDRESS_SPACE_H
 #define ADDRESS_SPACE_H
 
-#include "infHeap.h"
+#include "dynproc/infHeap.h"
 #include "codeRange.h"
-#include "ast.h"
+#include "ASTs/ast.h"
 #include "symtabAPI/h/Symtab.h"
-#include "dyninstAPI/src/trapMappings.h"
+#include "dynproc/trapMappings.h"
 #include <assert.h>
 #include <map>
 #include <set>
@@ -53,7 +53,7 @@
 #include "Relocation/Relocation.h"
 #include "Relocation/CodeTracker.h"
 #include "Relocation/Springboard.h"
-#include "Patching.h"
+#include "patching/Patching.h"
 
 #include "PatchMgr.h"
 #include "Command.h"
@@ -198,7 +198,6 @@ class AddressSpace : public InstructionSource {
     virtual void *getPtrToInstruction(const Address) const;
     virtual void *getPtrToData(const Address a) const { return getPtrToInstruction(a); }
 
-    bool usesDataLoadAddress() const; // OS-specific
     virtual bool isCode(const Address) const;
     virtual bool isData(const Address) const;
     virtual bool isReadOnly(const Address) const;
@@ -563,6 +562,5 @@ class AddressSpace : public InstructionSource {
 
 
 bool uninstrument(Dyninst::PatchAPI::Instance::Ptr);
-extern int heapItemCmpByAddr(const heapItem **A, const heapItem **B);
 
 #endif // ADDRESS_SPACE_H

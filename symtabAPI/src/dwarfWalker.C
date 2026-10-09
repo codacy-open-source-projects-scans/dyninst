@@ -31,7 +31,6 @@
 #include "common/src/vgannotations.h"
 #include "compiler_diagnostics.h"
 #include "dwarfWalker.h"
-#include "headers.h"
 #include "Module.h"
 #include "Symtab.h"
 #include "Collections.h"
@@ -49,6 +48,7 @@
 #include <dwarf_names.h>
 #include <dwarf_cu_info.h>
 #include <stack>
+#include "symbolDemangleWithCache.h"
 
 using namespace Dyninst;
 using namespace SymtabAPI;
@@ -1721,7 +1721,7 @@ bool DwarfWalker::addFuncToContainer(boost::shared_ptr<Type> returnType) {
       functions, but confuses the tests.  Since Type uses vectors
       to hold field names, however, duplicate -- demangled names -- are OK. */
 
-   std::string demangledName = P_cplus_demangle( curName() );
+   std::string demangledName = symbol_demangle_with_cache( curName(), false );
 
    // Strip everything left of the rightmost ':' off to get rid of the class names
    // rfind finds the last occurrence of ':'; add 1 to get past it.
@@ -2272,7 +2272,13 @@ boost::shared_ptr<typeSubrange> DwarfWalker::parseSubrange(Dwarf_Die *entry) {
 
   Dwarf_Off subrangeOffset = dwarf_dieoffset(entry);
   bool is_info = !dwarf_hasattr_integrate(entry, DW_TAG_type_unit);
-  typeId_t type_id = get_type_id(subrangeOffset, is_info, false);
+  // The subrange DIE may live in a DWZ supplementary file (its DW_AT_type/dimension
+  // resolved through .gnu_debugaltlink). Compute is_sup from the DIE's own CU rather
+  // than hardcoding false: a supplementary-file subrange and a main-file type can share
+  // the same section offset, and keying both as is_sup=false collides their type_ids
+  // (get_type_id key is {offset, is_sup, module}), handing a struct back a subrange.
+  Dwarf *desc = dwarf_cu_getdwarf(entry->cu);
+  typeId_t type_id = get_type_id(subrangeOffset, is_info, dbg() != desc);
 
   // `typeSubrange` expects numeric values for the bounds
   DYNINST_DIAGNOSTIC_BEGIN_SUPPRESS_MAYBE_UNINITIALIZED

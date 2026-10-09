@@ -35,8 +35,8 @@
 #include <string>
 #include <utility>
 #include "dyntypes.h"
-#include "dyninstAPI/src/codegen.h" // codeGen
-#include "dyninstAPI/src/function.h"
+#include "codegen/codegen.h" // codeGen
+#include "patching/function.h"
 #include "instructionAPI/h/Instruction.h" // Instruction::Ptr
 #include "CFG.h"
 #include "dyninstAPI/src/Relocation/CodeMover.h"

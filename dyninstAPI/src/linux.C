@@ -31,17 +31,18 @@
 // $Id: linux.C,v 1.279 2008/09/03 06:08:44 jaw Exp $
 
 #include "binaryEdit.h"
-#include "dynProcess.h"
+#include "dynproc/dynProcess.h"
 #include "image.h"
-#include "function.h"
-#include "instPoint.h"
-#include "baseTramp.h"
+#include "patching/function.h"
+#include "patching/instPoint.h"
+#include "trampolines/baseTramp.h"
 #include "os.h"
 #include "debug.h"
 #include "mapped_object.h"
 #include "mapped_module.h"
 #include "linux.h"
 #include <dlfcn.h>
+#include <sys/stat.h>
 
 #include <exception>
 #include <sstream>
@@ -51,9 +52,8 @@
 
 #include "boost/shared_ptr.hpp"
 
-#include "pcEventMuxer.h"
+#include "dynproc/pcEventMuxer.h"
 
-#include "common/src/headers.h"
 #include "common/src/linuxKludges.h"
 
 #include "symtabAPI/h/Symtab.h"
@@ -61,47 +61,6 @@ using namespace Dyninst::SymtabAPI;
 using namespace Dyninst::ProcControlAPI;
 
 using std::string;
-
-bool get_linux_version(int &major, int &minor, int &subvers)
-{
-    int subsub;
-    return get_linux_version(major,minor,subvers,subsub); 
-}
-
-bool get_linux_version(int &major, int &minor, int &subvers, int &subsubvers)
-{
-   static int maj = 0, min = 0, sub = 0, subsub = 0;
-   int result;
-   FILE *f;
-   if (maj)
-   {
-      major = maj;
-      minor = min;
-      subvers = sub;
-      subsubvers = subsub;
-      return true;
-   }
-   f = P_fopen("/proc/version", "r");
-   if (!f) goto error;
-   result = fscanf(f, "Linux version %d.%d.%d.%d", &major, &minor, &subvers,
-                    &subsubvers);
-   fclose(f);
-   if (result != 3 && result != 4) goto error;
-
-   maj = major;
-   min = minor;
-   sub = subvers;
-   subsub = subsubvers;
-   return true;
-
- error:
-   //Assume 2.4, which is the earliest version we support
-   major = maj = 2;
-   minor = min = 4;
-   subvers = sub = 0;
-   subsubvers = subsub = 0;
-   return false;
-}
 
 void PCProcess::inferiorMallocConstraints(Address near, Address &lo, Address &hi,
         inferiorHeapType /* type */ ) 
@@ -137,10 +96,6 @@ bool PCProcess::dumpCore(string) {
 }
 
 bool PCProcess::skipHeap(const heapDescriptor &) {
-    return false;
-}
-
-bool AddressSpace::usesDataLoadAddress() const {
     return false;
 }
 

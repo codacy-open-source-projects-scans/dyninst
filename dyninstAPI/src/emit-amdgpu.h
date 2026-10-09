@@ -32,10 +32,10 @@
 #define _EMIT_AMDGPU_H
 
 #include "codegen/RegControl.h"
-#include "baseTramp.h"
-#include "dyninstAPI/src/instPoint.h"
+#include "trampolines/baseTramp.h"
+#include "patching/instPoint.h"
 #include <assert.h>
-#include "codeGenAST.h"
+#include "ASTs/codeGenAST.h"
 #include <vector>
 
 #include "dyninstAPI/src/amdgpu-gfx908-details.h"
@@ -79,11 +79,26 @@ public:
   // Note that Dyninst::DyninstAPI::RegControl is unused on AMDGPU, simply pass Dyninst::DyninstAPI::RegControl::rc_no_control.
   codeBufIndex_t emitIf(Register expr_reg, Register target, Dyninst::DyninstAPI::RegControl rc, codeGen &gen);
 
+  codeBufIndex_t emitA(opCode op, Dyninst::Register src1, long dst, codeGen &gen, Dyninst::DyninstAPI::RegControl rc);
+
+  Dyninst::Register emitR(opCode op, Dyninst::Register src1, Dyninst::Register src2, Dyninst::Register dst, codeGen &gen, const instPoint *location);
+
+  void emitV(opCode op, Dyninst::Register src1, Dyninst::Register src2, Dyninst::Register dst,
+             codeGen &gen, int size = 4, AddressSpace * proc = NULL, bool s = true);
+
+  void emitVload(opCode op, Dyninst::Address src1, Dyninst::Register src2, Dyninst::Register dst,
+                 codeGen &gen, int size = 4, AddressSpace * proc = NULL);
+
+  void emitVstore(opCode op, Dyninst::Register src1, Dyninst::Register src2, Dyninst::Address dst,
+                  codeGen &gen, int size = 4, AddressSpace * proc = NULL);
+
   void emitOp(unsigned opcode, Register dest, Register src1, Register src2, codeGen &gen);
 
   // What is opcode2?
   void emitOpImm(unsigned opcode1, unsigned opcode2, Register dest, Register src1, RegValue src2imm,
                  codeGen &gen);
+
+  void emitImm(opCode op, Dyninst::Register src, Dyninst::RegValue src2imm, Dyninst::Register dst, codeGen &gen, bool isSigned = true);
 
   // The above signature is wierd, hence use the one below. TODO: later on, clean up the above mess
   void emitOpImmSimple(unsigned op, Register dest, Register src1, RegValue src2imm, codeGen &gen);

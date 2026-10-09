@@ -2,13 +2,12 @@
 #include "BPatch.h"
 #include "BPatch_collections.h"
 #include "BPatch_function.h"
-#include "codegen.h"
+#include "codegen/codegen.h"
 #include "debug.h"
-#include "headers.h"
 #include "mapped_module.h"
 #include "mapped_object.h"
 #include "operandAST.h"
-#include "registerSpace.h"
+#include "registerSpace/registerSpace.h"
 
 #include <iomanip>
 #include <sstream>
@@ -24,7 +23,7 @@ std::map<std::string, int> operandAST::allocTable = {{"--init--", -1}};
 operandAST::operandAST(operandType ot, void *arg) : oType(ot), oVar(NULL), operand_() {
 
   if(ot == operandType::ConstantString) {
-    oValue = (void *)P_strdup((char *)arg);
+    oValue = (void *)strdup((char *)arg);
   } else {
     oValue = (void *)arg;
   }
@@ -78,7 +77,7 @@ bool operandAST::generateCode_phase2(codeGen &gen, Address &,
 #else
     case operandType::Constant:
       assert(oVar == NULL);
-      emitVload(loadConstOp, (Address)oValue, retReg, retReg, gen, size,
+      gen.emitter()->emitVload(loadConstOp, (Address)oValue, retReg, retReg, gen, size,
                 gen.addrSpace());
       break;
 #endif
@@ -94,14 +93,12 @@ bool operandAST::generateCode_phase2(codeGen &gen, Address &,
       } else {
         tSize = sizeof(long);
       }
-      emitV(loadIndirOp, src, 0, retReg, gen, tSize,
+      gen.emitter()->emitV(loadIndirOp, src, 0, retReg, gen, tSize,
             gen.addrSpace());
       gen.rs()->freeRegister(src);
       break;
     case operandType::origRegister:
-      gen.rs()->readProgramRegister(gen, (Dyninst::Register)(long)oValue, retReg, size);
-      // emitLoadPreviousStackFrameRegister((Address) oValue, retReg, gen,
-      // size, noCost);
+      gen.rs()->readProgramRegister(gen, (Dyninst::Register)(long)oValue, retReg);
       break;
     case operandType::variableAddr:
       assert(oVar);
@@ -114,21 +111,21 @@ bool operandAST::generateCode_phase2(codeGen &gen, Address &,
                        gen.addrSpace());
       break;
     case operandType::ReturnVal:
-      src = emitR(getRetValOp, 0, Dyninst::Null_Register, retReg, gen, gen.point());
+      src = gen.emitter()->emitR(getRetValOp, 0, Dyninst::Null_Register, retReg, gen, gen.point());
       REGISTER_CHECK(src);
       if(src != retReg) {
         // Move src to retReg. Can't simply return src, since it was not
         // allocated properly
-        emitImm(orOp, src, 0, retReg, gen);
+        gen.emitter()->emitImm(orOp, src, 0, retReg, gen);
       }
       break;
     case operandType::ReturnAddr:
-      src = emitR(getRetAddrOp, 0, Dyninst::Null_Register, retReg, gen, gen.point());
+      src = gen.emitter()->emitR(getRetAddrOp, 0, Dyninst::Null_Register, retReg, gen, gen.point());
       REGISTER_CHECK(src);
       if(src != retReg) {
         // Move src to retReg. Can't simply return src, since it was not
         // allocated properly
-        emitImm(orOp, src, 0, retReg, gen);
+        gen.emitter()->emitImm(orOp, src, 0, retReg, gen);
       }
       break;
     case operandType::Param:
@@ -149,25 +146,25 @@ bool operandAST::generateCode_phase2(codeGen &gen, Address &,
           assert(0);
           break;
       }
-      src = emitR(paramOp, (Address)oValue, Dyninst::Null_Register, retReg, gen,
+      src = gen.emitter()->emitR(paramOp, (Address)oValue, Dyninst::Null_Register, retReg, gen,
                   gen.point());
       REGISTER_CHECK(src);
       if(src != retReg) {
         // Move src to retReg. Can't simply return src, since it was not
         // allocated properly
-        emitImm(orOp, src, 0, retReg, gen);
+        gen.emitter()->emitImm(orOp, src, 0, retReg, gen);
       }
     } break;
     case operandType::DataAddr:
       assert(oVar == NULL);
       addr = reinterpret_cast<Address>(oValue);
-      emitVload(loadOp, addr, retReg, retReg, gen, size,
+      gen.emitter()->emitVload(loadOp, addr, retReg, retReg, gen, size,
                 gen.addrSpace());
       break;
     case operandType::FrameAddr:
       addr = (Address)oValue;
       temp = gen.rs()->allocateRegister(gen);
-      emitVload(loadFrameRelativeOp, addr, temp, retReg, gen, size,
+      gen.emitter()->emitVload(loadFrameRelativeOp, addr, temp, retReg, gen, size,
                 gen.addrSpace());
       gen.rs()->freeRegister(temp);
       break;
@@ -176,7 +173,7 @@ bool operandAST::generateCode_phase2(codeGen &gen, Address &,
       // This codeGenAST holds the register number, and loperand holds offset.
       assert(operand_);
       addr = (Address)operand_->getOValue();
-      emitVload(loadRegRelativeOp, addr, (long)oValue, retReg, gen, size,
+      gen.emitter()->emitVload(loadRegRelativeOp, addr, (long)oValue, retReg, gen, size,
                 gen.addrSpace());
       break;
     case operandType::ConstantString:
@@ -192,7 +189,7 @@ bool operandAST::generateCode_phase2(codeGen &gen, Address &,
       }
 
       if(!gen.addrSpace()->needsPIC()) {
-        emitVload(loadConstOp, addr, retReg, retReg, gen, size,
+        gen.emitter()->emitVload(loadConstOp, addr, retReg, retReg, gen, size,
                   gen.addrSpace());
       } else {
         gen.codeEmitter()->emitLoadShared(loadConstOp, retReg, NULL, true, size, gen, addr);
@@ -237,7 +234,7 @@ void operandAST::emitVariableLoad(opCode op, Dyninst::Register src2, Dyninst::Re
                                       AddressSpace *as) {
   int_variable *var = lookUpVar(as);
   if(var && !as->needsPIC(var)) {
-    emitVload(op, var->getAddress(), src2, dest, gen, size_, as);
+    gen.emitter()->emitVload(op, var->getAddress(), src2, dest, gen, size_, as);
   } else {
     gen.codeEmitter()->emitLoadShared(op, dest, oVar, (var != NULL), size_, gen, 0);
   }
@@ -248,7 +245,7 @@ void operandAST::emitVariableStore(opCode op, Dyninst::Register src1, Dyninst::R
                                        AddressSpace *as) {
   int_variable *var = lookUpVar(as);
   if(var && !as->needsPIC(var)) {
-    emitVstore(op, src1, src2, var->getAddress(), gen, size_, as);
+    gen.emitter()->emitVstore(op, src1, src2, var->getAddress(), gen, size_, as);
   } else {
     gen.codeEmitter()->emitStoreShared(src1, oVar, (var != NULL), size_, gen);
   }

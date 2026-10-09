@@ -1,0 +1,35 @@
+\section{Examples}
+\label{sec:example}
+
+\subsection{Function Disassembly}
+
+The following example uses ParseAPI and InstructionAPI to disassemble
+the basic blocks in a function. As an example, it can be built with
+G++ as follows: \code{g++ -std=c++11 -o code\_sample code\_sample.C
+  -I<headers install path> -I<boost include path> -I<tbb include path>
+  -L<library install path> -lparseAPI -linstructionAPI -lsymtabAPI
+  -lcommon}. Note: this example must be compiled with C++11 support; for
+G++ this is enabled with \code{-std=c++11}, and it is on by default
+for Visual Studio.
+
+\lstinputlisting{code_sample.C}
+
+\subsection{Control flow graph traversal}
+
+The following complete example uses the ParseAPI to parse a binary and
+dump its control flow graph in the Graphviz file format. As an
+example, it can be built with G++ as follows: \code{g++ -std=c++11 -o example
+  example.C -I<headers install path> -I<boost include path>
+  -I<tbb include path> -L<library install path> -lparseAPI
+  -linstructionAPI -lsymtabAPI -lcommon}. Note: this example must be
+compiled with C++11 support; for G++ this is enabled with
+\code{-std=c++11}, and it is on by default for Visual Studio.
+
+\lstinputlisting{example.C}
+
+\subsection{Loop analysis}
+
+The following code example shows how to get loop information using ParseAPI once we have an parsed Function object.
+
+\lstinputlisting{examples/LoopAnalysis.C}
+

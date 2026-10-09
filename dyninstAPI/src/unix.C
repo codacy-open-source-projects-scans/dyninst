@@ -34,9 +34,9 @@
 #include "debug.h"
 #include "mapped_object.h"
 #include "mapped_module.h"
-#include "dynProcess.h"
-#include "dynThread.h"
-#include "function.h"
+#include "dynproc/dynProcess.h"
+#include "dynproc/dynThread.h"
+#include "patching/function.h"
 #include "binaryEdit.h"
 #include "common/src/dyninst_filesystem.h"
 #include <sys/stat.h>
@@ -437,7 +437,7 @@ bool PCProcess::getExecFileDescriptor(string filename,
 {
    Address base = 0;
 
-    desc = fileDescriptor(filename.c_str(),
+    desc = fileDescriptor(std::move(filename),
                           base,  // code
                           base); // data
     return true;
@@ -570,6 +570,18 @@ mapped_object *BinaryEdit::openResolvedLibraryName(std::string filename,
 
   // A little helper to fix some clunky checks
   auto is_compatible = [this](std::string const &path, std::string const &member) {
+    // A DT_NEEDED entry can only be satisfied by a library of the same ELF class
+    // (ld.so skips wrong-class candidates), and the search path mixes 32- and
+    // 64-bit directories. Check the class before opening the candidate as a
+    // BinaryEdit, which parses the whole file: a codegen-restricted build
+    // (DYNINST_CODEGEN_ARCH=i386) has no ABI tables for the other word size and
+    // cannot parse it at all.
+    if (member.empty()) {
+      Symtab *candidate{nullptr};
+      if (!Symtab::openFile(candidate, path) || candidate->getAddressWidth() != getAddressWidth()) {
+        return std::unique_ptr<BinaryEdit>{};
+      }
+    }
     auto temp = std::unique_ptr<BinaryEdit>{BinaryEdit::openFile(path, mgr(), patcher(), member)};
     if (temp && temp->getAddressWidth() == getAddressWidth()) {
       return temp;
@@ -660,8 +672,8 @@ mapped_object *BinaryEdit::openResolvedLibraryName(std::string filename,
 
 #if defined(os_linux) || defined(os_freebsd)
 
-#include "dyninstAPI/src/instPoint.h"
-#include "dyninstAPI/src/function.h"
+#include "patching/instPoint.h"
+#include "patching/function.h"
 #include "dyninstAPI/src/addressSpace.h"
 #include "symtabAPI/h/Symtab.h"
 #include "dyninstAPI/src/mapped_object.h"

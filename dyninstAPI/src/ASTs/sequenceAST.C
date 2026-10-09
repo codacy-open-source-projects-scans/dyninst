@@ -1,8 +1,8 @@
 #include "ast_helpers.h"
 #include "BPatch.h"
 #include "BPatch_type.h"
-#include "codegen.h"
-#include "registerSpace.h"
+#include "codegen/codegen.h"
+#include "registerSpace/registerSpace.h"
 #include "sequenceAST.h"
 
 #include <iomanip>

@@ -36,10 +36,10 @@
 #include "BPatch_module.h"
 #include "BPatch_point.h"
 #include "debug.h"
-#include "function.h"
-#include "instPoint.h"
+#include "patching/function.h"
+#include "patching/instPoint.h"
 #include "debug.h"
-#include "dynProcess.h"
+#include "dynproc/dynProcess.h"
 #include "mapped_object.h"
 #include "mapped_module.h"
 #include <iostream>
@@ -88,11 +88,6 @@ static void signalHandlerExitCB_wrapper(BPatch_point *point, void *dontcare)
 { 
     dynamic_cast<BPatch_process*>(point->getFunction()->getProc())->
         getHybridAnalysis()->signalHandlerExitCB(point,dontcare); 
-}
-static void synchShadowOrigCB_wrapper(BPatch_point *point, void *toOrig) 
-{
-    dynamic_cast<BPatch_process*>(point->getFunction()->getProc())->
-        getHybridAnalysis()->synchShadowOrigCB(point, (bool) toOrig);
 }
 
 InternalSignalHandlerCallback HybridAnalysis::getSignalHandlerCB()
@@ -272,8 +267,7 @@ bool HybridAnalysis::canUseCache(BPatch_point *pt)
 // unresolved, abruptEnds, and return instructions
 bool HybridAnalysis::instrumentFunction(BPatch_function *func, 
     bool useInsertionSet, 
-    bool instrumentReturns,
-    bool addShadowSync) 
+    bool instrumentReturns)
 {
     if (!instrumentReturns)
     {
@@ -294,10 +288,9 @@ bool HybridAnalysis::instrumentFunction(BPatch_function *func,
 
     Address funcAddr = (Address) func->getBaseAddr();
     int pointCount = 0;
-    mal_printf("instfunc at %lx; useInsertion %s, instrumentReturns %s, shadowSync %s\n", funcAddr,
+    mal_printf("instfunc at %lx; useInsertion %s, instrumentReturns %s\n", funcAddr,
         useInsertionSet ? "true" : "false",
-        instrumentReturns ? "true" : "false",
-        addShadowSync ? "true" : "false");
+        instrumentReturns ? "true" : "false");
     // first check to see if we've applied function replacement
     std::map<BPatch_function *,BPatch_function *>::iterator 
         rfIter = replacedFuncs_.find(func);
@@ -506,13 +499,14 @@ bool HybridAnalysis::instrumentFunction(BPatch_function *func,
                 BPatch_stopThreadExpr *returnSnippet;
                 BPatch_snippet * calcSnippet = NULL;
                 BPatch_stInterpret interp;
+                BPatch_constExpr bad_addr{0xbaadc0de};
                 if (isHandler) {
                     // case 0: signal handler return address
                     // for handlers, instrument their exit point with a snippet 
                     // that reads the address to which the program will return 
                     // from the CONTEXT of the exception, which is the 3rd argument
                     // to windows structured exception handlers
-                    calcSnippet = new BPatch_constExpr(0xbaadc0de);
+                    calcSnippet = &bad_addr;
                     interp = BPatch_noInterp;
                 }
                 else if (curPoint->isReturnInstruction()) {
@@ -559,34 +553,9 @@ bool HybridAnalysis::instrumentFunction(BPatch_function *func,
 
                 // clean up
                 delete returnSnippet;
-                if (dynamic_cast<BPatch_arithExpr*>(calcSnippet)) {
-                    delete calcSnippet;
-                }
             }
         }
 	}
-
-    // If we're copying original<->shadow do it here
-    if (addShadowSync) {
-        if ((skipShadowFuncs_.find(func->getName()) == skipShadowFuncs_.end()) &&
-            (instShadowFuncs_.find(func) == instShadowFuncs_.end()))
-        {
-            malware_cerr << "Adding shadow sync instrumentation to function " << func->getName() << endl;
-            std::vector<BPatch_point *> *entryPoints = func->findPoint(BPatch_entry);
-            if (entryPoints) {
-                pointCount++;
-                proc()->insertSnippet(BPatch_shadowExpr(true, synchShadowOrigCB_wrapper, BPatch_constExpr(1)),
-                    *entryPoints, BPatch_firstSnippet);
-            }
-            std::vector<BPatch_point *> *exitPoints = func->findPoint(BPatch_exit);
-            if (exitPoints) {
-                pointCount++;
-                proc()->insertSnippet(BPatch_shadowExpr(false, synchShadowOrigCB_wrapper, BPatch_constExpr(0)),
-                    *exitPoints, BPatch_lastSnippet);
-            }
-            instShadowFuncs_.insert(func);
-        }
-    }
     
     // close insertion set
     if (pointCount) {
@@ -1202,7 +1171,7 @@ bool HybridAnalysis::processInterModuleEdge(BPatch_point *point,
             targFunc = proc()->findFunctionByEntry(target);
         }
         addIndirectEdgeIfNeeded(point, target);
-        instrumentFunction(targFunc, false, instReturns, true);
+        instrumentFunction(targFunc, false, instReturns);
         proc()->finalizeInsertionSet(false);
         doMoreProcessing = false;
     }

@@ -42,12 +42,26 @@
 
 #include "Parser.h"
 #include "debug_parse.h"
+#include "common/src/debug_common.h"   // shared progress channel (progress_printf / DYNINST_DEBUG_PROGRESS)
 
 using namespace std;
 using namespace Dyninst;
 using namespace Dyninst::ParseAPI;
 
 #if defined(cap_stripped_binaries)
+
+// One-line progress report for the speculative gap-parsing phase, routed through
+// the shared progress channel (progress_printf / DYNINST_DEBUG_PROGRESS, implemented
+// in common). progress_printf adds the wall-clock timestamp and self-gates on the
+// env var, so dyninstAPI and parseAPI progress line up on one timeline.
+static void gap_progress_report(const char *what, Dyninst::Address at,
+                                Dyninst::Address regBeg, Dyninst::Address regEnd) {
+    unsigned long span = (regEnd > regBeg) ? (unsigned long)(regEnd - regBeg) : 0;
+    unsigned long done = (at > regBeg && at <= regEnd) ? (unsigned long)(at - regBeg) : 0;
+    double pct = span ? (100.0 * (double)done / (double)span) : 0.0;
+    progress_printf("gap-parse: %s at %lx (~%.1f%% of region [%lx,%lx))\n",
+            what, (unsigned long)at, pct, (unsigned long)regBeg, (unsigned long)regEnd);
+}
 
 static bool isStackFramePrecheck_msvs( const unsigned char *buffer );
 static bool isStackFramePrecheck_gcc( const unsigned char *buffer );
@@ -333,29 +347,26 @@ void Parser::parse_gap_heuristic(CodeRegion * cr)
     finalize();
 }
 
-bool Parser::getGapRange(CodeRegion* cr, Address curAddr, Address& gapStart, Address& gapEnd) {
-    std::set< std::pair<Address, Address> > func_range;
-    for (auto fit = sorted_funcs.begin(); fit != sorted_funcs.end(); ++fit) {
-        Function * f = *fit;
-	for (auto eit = f->extents().begin(); eit != f->extents().end(); ++eit) {
-	    FuncExtent *fe = *eit;
-	    func_range.insert(make_pair(fe->start(), fe->end()));
-	}
-    }
-    auto iter = func_range.upper_bound(make_pair(curAddr, std::numeric_limits<Address>::max() ));
-    if (iter == func_range.end()) {
+bool Parser::getGapRange(CodeRegion* cr, Address curAddr, Address& gapStart, Address& gapEnd,
+                         const std::set<std::pair<Address, Address> >& known_extents) {
+    // known_extents -- a start-ordered set of every parsed function's extents -- is built
+    // and maintained by the caller (probabilistic_gap_parsing) rather than rebuilt from
+    // sorted_funcs on every call; that per-call O(F) rebuild was the speculative pass's
+    // O(gaps x F) hot spot. The logic below is otherwise unchanged.
+    auto iter = known_extents.upper_bound(make_pair(curAddr, std::numeric_limits<Address>::max() ));
+    if (iter == known_extents.end()) {
         gapEnd = cr->offset() + cr->length();
     } else {
         gapEnd = iter->first;
     }
-    if (iter == func_range.begin()) {
+    if (iter == known_extents.begin()) {
         gapStart = curAddr;
     } else {
-	--iter;
+        --iter;
         if (iter->second > curAddr) {
-	    gapStart = iter->second;
+            gapStart = iter->second;
         } else {
-	    gapStart = curAddr;
+            gapStart = curAddr;
         }
     }
     return gapStart < gapEnd;
@@ -368,6 +379,11 @@ void Parser::probabilistic_gap_parsing(CodeRegion *cr) {
     if (_parse_state < COMPLETE)
         parse();
     finalize();
+    // Drain pending finalized functions into funcsByRange now (single-threaded), so
+    // funcs_to_ranges starts empty and the in-loop fold below only sees gap-discovered
+    // functions.
+    if (!funcs_to_ranges.empty())
+        finalize_ranges();
 
     string model_spec;
     if (obj().cs()->getAddressWidth() == 8) 
@@ -377,10 +393,27 @@ void Parser::probabilistic_gap_parsing(CodeRegion *cr) {
 
     // Load the pre-trained idiom model:
     hd::ProbabilityCalculator pc(cr, obj().cs(), this, model_spec);
+
+    // Start-ordered index of every parsed extent (start,end). Built once; maintained
+    // incrementally below. getGapRange queries this instead of rebuilding it from
+    // sorted_funcs on every call (the old O(gaps x F) hot spot). See getGapRange.
+    std::set<std::pair<Address, Address> > known_extents;
+    for (auto f : sorted_funcs)
+        for (auto ext : f->extents())
+            known_extents.insert(std::make_pair(ext->start(), ext->end()));
+
     Address gapStart;
     Address gapEnd;
     Address curAddr = cr->offset();
-    while (getGapRange(cr, curAddr, gapStart, gapEnd)) {
+    // Rewrite/parse-progress reporting via the shared progress channel
+    // (progress_printf / DYNINST_DEBUG_PROGRESS, implemented in common). This
+    // gap-parsing loop is the dominant cost on large binaries and is otherwise
+    // silent; progress_printf self-gates on the env var, so these calls are no-ops
+    // unless DYNINST_DEBUG_PROGRESS is set.
+    const Address regBeg = cr->offset();
+    const Address regEnd = cr->offset() + cr->length();
+    gap_progress_report("starting speculative gap parsing", regBeg, regBeg, regEnd);
+    while (getGapRange(cr, curAddr, gapStart, gapEnd, known_extents)) {
         parsing_printf("[%s] scanning for FEP in [%lx,%lx)\n",
             FILE__,gapStart,gapEnd);
         for(curAddr=gapStart; curAddr < gapEnd; ++curAddr) {
@@ -395,7 +428,16 @@ void Parser::probabilistic_gap_parsing(CodeRegion *cr) {
             }
         }
         finalize();
+        // Fold gap-discovered functions into the index, then drain funcs_to_ranges
+        // into funcsByRange (keeping other consumers current and the fold incremental
+        // -- next iteration only sees newly-finalized functions).
+        for (auto f : funcs_to_ranges)
+            for (auto ext : f->extents())
+                known_extents.insert(std::make_pair(ext->start(), ext->end()));
+        if (!funcs_to_ranges.empty())
+            finalize_ranges();
     }
+    gap_progress_report("speculative gap parsing done", regEnd, regBeg, regEnd);
 }
 
 bool isStackFramePrecheck_gcc( const unsigned char *buffer )

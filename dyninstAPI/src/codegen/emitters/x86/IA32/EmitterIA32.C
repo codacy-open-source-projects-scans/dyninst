@@ -6,11 +6,12 @@
 #include "codegen/emitters/x86/generators.h"
 #include "codegen/emitters/x86/IA32/EmitterIA32.h"
 #include "codegen/RegControl.h"
+#include "common/src/bitmath.h"
 #include "debug.h"
-#include "function.h"
+#include "patching/function.h"
 #include "image.h"
 #include "inst-x86.h"
-#include "parse_func.h"
+#include "parsing/parse_func.h"
 #include "registerSpace/RealRegister.h"
 #include "registerSpace/registerSpace.h"
 #include "Symbol.h"
@@ -20,8 +21,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <limits>
-
-extern bool isPowerOf2(int value, int &result);
 
 static int extra_space_check{};
 
@@ -581,37 +580,55 @@ namespace Dyninst { namespace DyninstAPI {
     gen.rs()->makeRegisterAvail(RealRegister(REGNUM_EDX), gen);
     gen.rs()->noteVirtualInReal(scratch, RealRegister(REGNUM_EDX));
     RealRegister src2_r = gen.rs()->loadVirtual(src2, gen);
-    gen.rs()->makeRegisterAvail(RealRegister(REGNUM_EAX), gen);
-    emitSimpleInsn(0x99, gen); // cdq (src1 -> eax:edx)
+    // EAX holds the dividend (src1, loaded above): cdq sign-extends it into
+    // edx:eax and idiv divides that pair. Do NOT makeRegisterAvail(EAX) here --
+    // that spills src1 out of EAX (makeRegisterAvail -> spillReal), leaving a
+    // garbage dividend and, with a valid nonzero divisor, a #DE / SIGFPE.
+    // Just mark EAX defined (it is written by the divide) without evicting it.
+    gen.markRegDefined(REGNUM_EAX);
     if(s) {
-      emitOpExtReg(0xF7, 0x7, src2_r, gen); // idiv eax:edx,src2 -> eax
+      emitSimpleInsn(0x99, gen); // cdq: sign-extend eax into edx for signed idiv
+      emitOpExtReg(0xF7, 0x7, src2_r, gen); // idiv edx:eax, src2 -> eax
     } else {
-      emitOpExtReg(0xF7, 0x6, src2_r, gen); // div eax:edx,src2 -> eax
+      // Unsigned divide: the dividend is 0:eax, so edx must be ZEROED, not
+      // sign-extended. The old code emitted cdq unconditionally before both
+      // idiv AND div; for an unsigned div with eax's top bit set (e.g. 0xffffffff)
+      // cdq set edx=0xffffffff, making div compute 0xffffffff`eax / src2, whose
+      // quotient overflows 32 bits -> #DE / SIGFPE.
+      emitMovImmToReg(RealRegister(REGNUM_EDX), 0, gen); // edx = 0
+      emitOpExtReg(0xF7, 0x6, src2_r, gen); // div edx:eax, src2 -> eax
     }
+    // The quotient is now in EAX; src1 has been consumed by the divide. Release
+    // src1's claim on EAX (freeRegister -> markVirtualDead clears the mapping)
+    // BEFORE assigning EAX to dest, otherwise noteVirtualInReal(dest, EAX) trips
+    // its "reg already occupied" assert. Mirrors the src1-reused-as-dest pattern
+    // elsewhere in this emitter (freeRegister(src1); noteVirtualInReal(dest,...)).
+    gen.rs()->freeRegister(src1);
     gen.rs()->noteVirtualInReal(dest, RealRegister(REGNUM_EAX));
     gen.rs()->freeRegister(scratch);
   }
 
   void EmitterIA32::emitDivImm(Register dest, Register src1, RegValue src2imm, codeGen &gen,
                                bool s) {
-    int result;
     if(src2imm == 1) {
       return;
     }
 
-    if(isPowerOf2(src2imm, result) && result <= MAX_IMM8) {
+    if(can_optimize_as_shift(src2imm, MAX_IMM8)) {
       RealRegister src1_r = gen.rs()->loadVirtual(src1, gen);
       RealRegister dest_r = gen.rs()->loadVirtualForWrite(dest, gen);
+
+      const uint8_t num_bits_to_shift = *Dyninst::ilog2(src2imm);
 
       if(src1 != dest) {
         emitMovRegToReg(dest_r, src1_r, gen);
       }
       if(s) {
         // sar dest, result
-        emitOpExtRegImm8(0xC1, 7, dest_r, static_cast<unsigned char>(result), gen);
+        emitOpExtRegImm8(0xC1, 7, dest_r, num_bits_to_shift, gen);
       } else {
         // shr dest, result
-        emitOpExtRegImm8(0xC1, 5, dest_r, static_cast<unsigned char>(result), gen);
+        emitOpExtRegImm8(0xC1, 5, dest_r, num_bits_to_shift, gen);
       }
 
     } else {
@@ -1077,8 +1094,6 @@ namespace Dyninst { namespace DyninstAPI {
   }
 
   void EmitterIA32::emitTimesImm(Register dest, Register src1, RegValue src2imm, codeGen &gen) {
-    int result;
-
     RealRegister src1_r = gen.rs()->loadVirtual(src1, gen);
     RealRegister dest_r = gen.rs()->loadVirtualForWrite(dest, gen);
 
@@ -1087,12 +1102,13 @@ namespace Dyninst { namespace DyninstAPI {
       return;
     }
 
-    if(isPowerOf2(src2imm, result) && result <= MAX_IMM8) {
+    if(can_optimize_as_shift(src2imm, MAX_IMM8)) {
       // sal dest, result
       if(src1 != dest) {
         emitMovRegToReg(dest_r, src1_r, gen);
       }
-      emitOpExtRegImm8(0xC1, 4, dest_r, static_cast<char>(result), gen);
+      const uint8_t bits_to_shift = *Dyninst::ilog2(src2imm);
+      emitOpExtRegImm8(0xC1, 4, dest_r, bits_to_shift, gen);
     } else {
       // imul src1 * src2imm -> dest_r
       emitOpRegRegImm(0x69, dest_r, src1_r, src2imm, gen);

@@ -36,11 +36,17 @@
 #include "instructionAPI/h/InstructionDecoder.h" // for debug
 
 #include "dyninstAPI/src/addressSpace.h" // Also for debug
-#include "dyninstAPI/src/function.h"
+#include "patching/function.h"
+#include "dyninstAPI/src/mapped_object.h"  // func_instance::obj() -> parse_img()
+#include "dyninstAPI/src/image.h"          // image::getObject() -> SymtabAPI::Symtab
 
 #include "dyninstAPI/src/debug.h"
 #include "CodeTracker.h"
 #include "CFG/RelocGraph.h"
+
+#include <iterator>  // std::distance (rewrite-progress reporting)
+#include <map>       // ifunc-resolver exclusion cache
+#include <set>
 
 using namespace std;
 using namespace Dyninst;
@@ -70,11 +76,52 @@ CodeMover::~CodeMover() {
 
 bool CodeMover::addFunctions(FuncSet::const_iterator begin, 
 			     FuncSet::const_iterator end) {
+   // Rewrite-progress reporting (DYNINST_DEBUG_PROGRESS). The per-function build
+   // loop and the per-block codegen loop are otherwise silent, so a large binary
+   // rewrite (e.g. a multi-hundred-MB shared library) can look hung for a long time.
+   progress_printf("relocate: building reloc blocks for %zu functions\n",
+                   (size_t)std::distance(begin, end));
+
+   // Per-object cache of ifunc-resolver entry offsets (STT_GNU_IFUNC symbols,
+   // Symbol::ST_INDIRECT). ifunc resolvers are invoked by ld.so during dynamic
+   // relocation (before main, before the PLT/GOT is filled and before any
+   // Dyninst runtime/base-tramp exists). Relocating one produces a copy that
+   // calls through an unfilled PLT stub -> branch to 0 -> SIGSEGV at startup
+   // (observed rewriting libc on ppc64le ELFv2). They must stay at their
+   // original addresses, unrelocated and un-springboarded; the IRELATIVE reloc
+   // keeps pointing at the original resolver, and ld.so runs it correctly so
+   // callers still reach the resolved implementation.
+   std::map<mapped_object *, std::set<Offset> > ifuncResolverOffsets;
+   auto isIfuncResolver = [&ifuncResolverOffsets](func_instance *func) -> bool {
+      mapped_object *obj = func->obj();
+      if (!obj) return false;
+      auto it = ifuncResolverOffsets.find(obj);
+      if (it == ifuncResolverOffsets.end()) {
+         std::set<Offset> offs;
+         image *img = obj->parse_img();
+         SymtabAPI::Symtab *symtab = img ? img->getObject() : NULL;
+         if (symtab) {
+            std::vector<SymtabAPI::Symbol *> syms;
+            if (symtab->getAllSymbolsByType(syms, SymtabAPI::Symbol::ST_INDIRECT)) {
+               for (SymtabAPI::Symbol *s : syms) offs.insert(s->getOffset());
+            }
+         }
+         it = ifuncResolverOffsets.emplace(obj, std::move(offs)).first;
+      }
+      if (it->second.empty()) return false;
+      return it->second.count(func->ifunc()->addr()) != 0;
+   };
+
    // A vector of Functions is just an extended vector of basic blocks...
    for (; begin != end; ++begin) {
       func_instance *func = *begin;
       if (!func->isInstrumentable()) {
 	relocation_cerr << "\tFunction " << func->symTabName() << " is non-instrumentable, skipping" << endl;
+         continue;
+      }
+      if (isIfuncResolver(func)) {
+         relocation_cerr << "\tFunction " << func->symTabName()
+                         << " is an ifunc resolver; leaving in place (runs in ld.so before instrumentation is live)" << endl;
          continue;
       }
       relocation_cerr << "\tAdding function " << func->symTabName() << endl;
@@ -118,8 +165,26 @@ void CodeMover::finalizeRelocBlocks() {
    if (finalized_) return;
 
    finalized_ = true;
+   // Two phases, deliberately NOT fused. linkRelocBlocks() builds a block's
+   // edges, but an in-edge whose source is another RelocBlock is deferred and
+   // only materialized when that *source* block is later linked (via its
+   // getSuccessors). determineSpringboards() classifies a block from its
+   // inEdges_, and the IndirBlockEntry upgrade requires the block's INDIRECT
+   // in-edge to already exist. If the two are fused into one loop, a block is
+   // classified against a half-built graph: a jump-table target whose dispatch
+   // block appears later in the list (e.g. a backward indirect jump) has no
+   // INDIRECT in-edge yet, so it is mis-classified as Suggested instead of
+   // IndirBlockEntry. In a later, lower-priority pass it can then lose the
+   // springboard slot to an adjacent block whose 5-byte jump springboard
+   // overwrites its entry, so an indirect dispatch to it lands mid-jump ->
+   // SIGSEGV. This bites -O2/LTO code with dense jump tables and tiny (<5-byte)
+   // case blocks packed together -- e.g. two case targets 3 bytes apart in one
+   // function of SPEC CPU2017 602.gcc_s. Splitting into link-all-then-classify
+   // guarantees the graph is complete before any classification reads it.
    for (RelocBlock *iter = cfg_->begin(); iter != cfg_->end(); iter = iter->next()) {
       iter->linkRelocBlocks(cfg_);
+   }
+   for (RelocBlock *iter = cfg_->begin(); iter != cfg_->end(); iter = iter->next()) {
       iter->determineSpringboards(priorityMap_);
    }
 }
@@ -150,12 +215,13 @@ bool CodeMover::initialize(const codeGen &templ) {
    // Tell all the blocks to do their generation thang...
    for (RelocBlock *iter = cfg_->begin(); iter != cfg_->end(); iter = iter->next()) {
       if (!iter->finalizeCF()) return false;
-      
+
       if (!iter->generate(templ, buffer_)) {
          cerr << "ERROR: failed to generate RelocBlock!" << endl;
          return false; // Catastrophic failure
       }
    }
+   progress_printf("relocate: reloc block code generation done\n");
    return true;
 }
 

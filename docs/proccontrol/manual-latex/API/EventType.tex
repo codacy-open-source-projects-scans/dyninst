@@ -1,0 +1,153 @@
+\declaredin{EventType.h}
+
+The \code{EventType} class represents a type of event. Each instance of an
+Event happening has one associated EventType, and callback functions can be
+registered against EventTypes. Every EventType has a code---an integral value
+that identifies the kind of event. Some EventTypes also have a time---Pre, Post
+or None---describing when an Event may occur relative to the operation named by
+the code. For example, an EventType with a code of Exit and a time of Pre
+(written as pre-exit) is associated with an Event that occurs just before a
+process exits and its address space is cleaned, while a code of Exit and a time
+of Post is associated with an Event that occurs afterwards.
+
+When using EventTypes to register callback functions a special time value of
+Any can be used. This signifies that the callback function should trigger for
+both Pre and Post time events. ProcControlAPI will never deliver an Event that
+has an EventType with a time of Any.
+
+Events and EventTypes are described at a higher level in
+Section~\ref{subsubsec:events}, and Table~\ref{tab:event-subclass} lists the
+Event subclass used for each EventType.
+
+\begin{apient}
+typedef int Code;
+
+enum EventType::Time {
+  Pre = 0,
+  Post,
+  None,
+  Any
+};
+\end{apient}
+
+\apidesc{
+The Code and Time types are respectively used to describe the code and time
+values of an EventType.
+}
+
+\begin{apient}
+static const int Error = -1;
+static const int Unset = 0;
+static const int Exit = 1;
+static const int Crash = 2;
+static const int Fork = 3;
+static const int Exec = 4;
+static const int UserThreadCreate = 5;
+static const int LWPCreate = 6;
+static const int UserThreadDestroy = 7;
+static const int LWPDestroy = 8;
+static const int Stop = 9;
+static const int Signal = 10;
+static const int LibraryLoad = 11;
+static const int LibraryUnload = 12;
+static const int Bootstrap = 13;
+static const int Breakpoint = 14;
+static const int RPC = 15;
+static const int SingleStep = 16;
+static const int Library = 17;
+static const int ForceTerminate = 18;
+static const int ControlAuthority = 20;
+static const int AsyncRead = 21;
+static const int AsyncWrite = 22;
+static const int AsyncReadAllRegs = 23;
+static const int AsyncSetAllRegs = 24;
+static const int AsyncFileRead = 25;
+static const int PreSyscall = 26;
+static const int PostSyscall = 27;
+\end{apient}
+
+\apidesc{
+These constants describe the possible values for an EventType's code, and are
+named as EventType::Exit, EventType::Crash and so on. The Error and Unset codes
+are for handling error cases and should not be used for callback functions or
+be associated with Events.
+}
+
+\begin{apient}
+static const int Terminate = 400;
+static const int ThreadCreate = 401;
+static const int ThreadDestroy = 402;
+static const int AsyncIO = 403;
+\end{apient}
+
+\apidesc{
+These codes group several of the codes above. A callback function registered
+against one of them is registered against the codes it stands for, and an
+EventType carrying the grouping code is never delivered: a callback registered
+for Terminate receives Exit, Crash and ForceTerminate events, one registered
+for ThreadCreate receives UserThreadCreate and LWPCreate events, and one
+registered for ThreadDestroy receives UserThreadDestroy and LWPDestroy events.
+
+AsyncIO is the exception. No handler claims it and it stands for nothing, so
+registering a callback for it fails and returns false rather than registering
+anything. Register for the individual Async codes instead.
+}
+
+\begin{apient}
+static const int MaxProcCtrlEvent = 1000;
+\end{apient}
+
+\apidesc{
+The EventType codes were implemented as an integer (rather than an enum) to
+allow users to create custom EventTypes. Any custom EventType should begin at
+the MaxProcCtrlEvent value; all smaller values are reserved by ProcControlAPI.
+}
+
+\begin{apient}
+EventType(Code e);
+EventType(Time t, Code e);
+EventType();
+\end{apient}
+
+\apidesc{
+The one parameter constructor constructs an EventType with the given code and a
+time of Any. The two parameter constructor constructs an EventType with the
+given time and code values. The default constructor constructs an EventType
+with an Unset code and a None time value.
+}
+
+\begin{apient}
+Code code() const;
+\end{apient}
+
+\apidesc{
+This function returns the code value of the EventType.
+}
+
+\begin{apient}
+Time time() const;
+\end{apient}
+
+\apidesc{
+This function returns the time value of the EventType.
+}
+
+\begin{apient}
+std::string name() const;
+\end{apient}
+
+\apidesc{
+This function returns a human readable name for this EventType.
+}
+
+\begin{apient}
+struct eventtype_cmp {
+  bool operator()(const EventType& a, const EventType& b) const;
+};
+\end{apient}
+
+\apidesc{
+This type defines a less-than comparison function for EventTypes. While a
+comparison of EventTypes does not have a semantic meaning, it is useful for
+inserting EventTypes into maps or other STL containers.
+}

@@ -32,51 +32,6 @@
 // The argument given is returned here
 
 #include <stdio.h>
-#include "common/src/headers.h"
-
-char *optarg;
-int P_getopt(int argc, char *argv[], const char *optstring)
-{
-  int i;
-  char arg_found = (char) 0;
-  static int lastArgSeen = 0;
-  if (lastArgSeen >= argc) return EOF;
-  for (i = lastArgSeen; i < argc; i++) {
-    unsigned int opt_index = 0;
-    char *nextArg = argv[i];
-    if (nextArg[0] != '-') continue;
-    for (opt_index = 0; opt_index < P_strlen(optstring); opt_index++)
-      if (optstring[opt_index] == nextArg[1]) {
-        arg_found = optstring[opt_index];
-        // We may have an argument value
-        if ((opt_index < strlen(optstring)-1) // overflow bad
-            && (optstring[opt_index+1] == ':')) {
-          // Argument. Either the last part of the string, or the 
-          // next item in the argv set
-          if (strlen(nextArg) > 2) { // Last part of the argument
-            optarg = (char *)(nextArg + 2);
-          }
-          else
-            if (i < argc - 1) {              
-              optarg = argv[i + 1];
-            }
-            else {
-              optarg = (char *)0;
-            }
-        } // argument found
-        break;
-      }
-    if (opt_index == strlen(optstring)) // Nothing found
-      break;
-    if (arg_found)
-      break;
-  }
-  lastArgSeen = i+1;
-  if (!arg_found)
-      return EOF;
-  return arg_found;
-}
-
 
 /*
  * stripAtSuffix
@@ -117,19 +72,19 @@ char *cplus_demangle(const char *c, int, bool includeTypes) {
        stripAtSuffix(buf);
        if (buf[0] == '\0')
           return 0; // avoid null names which seem to annoy Paradyn
-       return P_strdup(buf);
+       return strdup(buf);
     } else {
        if (includeTypes) {
           if (UnDecorateSymbolName(c, buf, 1000, UNDNAME_COMPLETE| UNDNAME_NO_ACCESS_SPECIFIERS|UNDNAME_NO_MEMBER_TYPE|UNDNAME_NO_MS_KEYWORDS)) {
             //   printf("Undecorate with types: %s = %s\n", c, buf);
             stripAtSuffix(buf);
-            return P_strdup(buf);
+            return strdup(buf);
           }
        }  else if (UnDecorateSymbolName(c, buf, 1000, UNDNAME_NAME_ONLY)) {
          //     else if (UnDecorateSymbolName(c, buf, 1000, UNDNAME_COMPLETE|UNDNAME_32_BIT_DECODE)) {
          //     printf("Undecorate: %s = %s\n", c, buf);
          stripAtSuffix(buf);
-         return P_strdup(buf);
+         return strdup(buf);
        }
     }
     return 0;

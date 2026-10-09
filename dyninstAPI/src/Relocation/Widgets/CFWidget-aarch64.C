@@ -40,8 +40,8 @@
 #include "../CodeTracker.h"
 #include "../CodeBuffer.h"
 #include "dyninstAPI/src/addressSpace.h"
-#include "dyninstAPI/src/emit-aarch64.h"
-#include "registerSpace.h"
+#include "codegen/emitters/aarch64/EmitterAarch64.h"
+#include "registerSpace/registerSpace.h"
 
 
 using namespace Dyninst;

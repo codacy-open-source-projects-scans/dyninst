@@ -34,12 +34,11 @@
 #include <assert.h>
 #include <string>
 #include <fstream>
+#include <sys/stat.h>
 
 #include "image.h"
-#include "inst.h"
 #include "debug.h"
-#include "function.h"
-#include "Parsing.h"
+#include "patching/function.h"
 
 #include "common/src/Timer.h"
 #include "common/src/dyninst_filesystem.h"
@@ -65,7 +64,7 @@
 #endif
 
 // For callbacks
-#include "dyninstAPI/src/mapped_object.h" 
+#include "dyninstAPI/src/mapped_object.h"
 
 AnnotationClass<image_variable> ImageVariableUpPtrAnno("ImageVariableUpPtrAnno", NULL);
 std::vector<image*> allImages;
@@ -79,6 +78,15 @@ using Dyninst::SymtabAPI::Symbol;
 using Dyninst::SymtabAPI::Region;
 using Dyninst::SymtabAPI::Variable;
 using Dyninst::SymtabAPI::Module;
+
+namespace {
+  //Optionally eliminate some hints in which Dyninst is not interested
+  struct filt_heap : SymtabCodeSource::hint_filt {
+    bool operator()(SymtabAPI::Function *f) {
+      return f && f->getModule() && f->getModule()->fileName() == "DYNINSTheap";
+    }
+  } nuke_heap;
+}
 
 fileDescriptor::fileDescriptor():
         code_(0), data_(0),
@@ -150,6 +158,7 @@ int codeBytesSeen = 0;
 #include <dataflowAPI/h/AbslocInterface.h>
 #include <dataflowAPI/h/Absloc.h>
 #include <dataflowAPI/h/DynAST.h>
+#include <instructionAPI/h/InstructionAST.h>
 
 namespace {
     /* On PPC GLIBC (32 & 64 bit) the address of main is in a structure
@@ -281,13 +290,26 @@ namespace {
             b->end()-b->start(),
             b->region()->getArch());
 
-        RegisterAST::Ptr r2( new RegisterAST(ppc32::r2) );
-        RegisterAST::Ptr r8( new RegisterAST(ppc32::r8) );
+        // Register operands produced by the decoder are normalized to the
+        // decoding architecture (ppc64) but do not necessarily carry the
+        // same bit range as a RegisterAST built directly from a ppc64
+        // register. RegisterAST equality -- used by Instruction::isWritten/
+        // isRead and Expression::bind -- compares the register id AND the
+        // bit range, so those queries silently never match here. Match and
+        // bind registers by id instead.
+        auto usesRegID = [](std::set<RegisterAST::Ptr> const& regs,
+                            MachRegister reg) {
+            for (auto const& i : regs)
+                if (i->getID() == reg) return true;
+            return false;
+        };
 
         Address cur_addr = b->start();
         while(cur_addr < b->end()) {
             Instruction cur = dec.decode();
-            if(cur.isWritten(r8)) {
+            std::set<RegisterAST::Ptr> written;
+            cur.getWriteSet(written);
+            if(usesRegID(written, ppc64::r8)) {
                 find = true;
                 r8_def = cur;
                 r8_def_addr = cur_addr;  
@@ -300,13 +322,46 @@ namespace {
         Address ss_addr = 0;
 
         // Try a TOC-based lookup first
-        if (r8_def.isRead(r2)) {
+        std::set<RegisterAST::Ptr> readRegs;
+        r8_def.getReadSet(readRegs);
+        if (usesRegID(readRegs, ppc64::r2)) {
             set<Expression::Ptr> memReads;
             r8_def.getMemoryReadOperands(memReads);
             Address TOC = f->obj()->cs()->getTOC(r8_def_addr);
+            // ELFv2 (ppc64le) has no .opd section, so the code source's TOC
+            // table is empty and getTOC() returns 0 for every address.
+            // Derive the TOC from the function's global entry point instead.
+            // The ABI-prescribed entry sequence
+            //     addis r2,r12,H ; addi r2,r2,L
+            // with r12 holding the entry address gives
+            //     TOC = entry + (H << 16) + L,
+            // and the linker may relax it (static links below 2 GB) to the
+            // absolute form
+            //     lis r2,H ; addi r2,r2,L    =>    TOC = (H << 16) + L.
+            // (POWER10 pc-relative code sets up no TOC at all; its r8 load
+            // does not read r2, so this branch is never reached for it.)
+            if (TOC == 0) {
+                const uint32_t *entry_code = (const uint32_t *)
+                    b->region()->getPtrToInstruction(f->addr());
+                if (entry_code
+                    && f->addr() + 8 <= b->region()->high()
+                    && (entry_code[1] & 0xffff0000) == 0x38420000) // addi r2,r2,L
+                {
+                    Address hi = (Address)(int16_t)(entry_code[0] & 0xffff) << 16;
+                    Address lo = (Address)(int16_t)(entry_code[1] & 0xffff);
+                    if ((entry_code[0] & 0xffff0000) == 0x3c4c0000)      // addis r2,r12,H
+                        TOC = f->addr() + hi + lo;
+                    else if ((entry_code[0] & 0xffff0000) == 0x3c400000) // lis r2,H
+                        TOC = hi + lo;
+                }
+            }
             if (TOC != 0 && memReads.size() == 1) {
                 Expression::Ptr expr = *memReads.begin();
-                expr->bind(r2.get(), Result(u64, TOC));
+                // Bind the r2 instance used by the expression itself so the
+                // bind's equality test matches it.
+                for (RegisterAST::Ptr const& ru : getUsedRegisters(expr))
+                    if (ru->getID() == ppc64::r2)
+                        expr->bind(ru.get(), Result(u64, TOC));
                 const Result &res = expr->eval();
                 if (res.defined) {
                     void *res_addr =
@@ -328,7 +383,7 @@ namespace {
             for( ; ait != assigns.end(); ++ait) {
                 AbsRegion & outReg = (*ait)->out();
                 Absloc const& loc = outReg.absloc();
-                if(loc.reg() == r8->getID())
+                if(loc.reg() == ppc64::r8)
                     break;
             }
             if(ait == assigns.end()) {
@@ -495,26 +550,34 @@ int image::findMain()
                 return -1;
             }
 
-            Block * b = NULL;
+            // Candidate blocks for the __libc_start_main call setup:
+            // glibc's dynamic _start makes the call from its entry block,
+            // but a tail-branching _start (static link) parses into one
+            // function with several call edges further in.
+            // evaluate_main_address() is fail-to-zero per block, so rather
+            // than guessing the one right block, try the entry block and
+            // then each call-edge source until one yields a valid address.
+            std::vector<Block *> candidates;
+            Block * entryBlock = tco.findBlockByEntry(reg,eAddr);
+            if (entryBlock)
+                candidates.push_back(entryBlock);
             const Function::edgelist & calls = func->callEdges();
-            if (calls.empty()) {
-                // when there are no calls, let's hope the entry block is it
-                b = tco.findBlockByEntry(reg,eAddr);
-            } else if(calls.size() == 1) {
-                Function::edgelist::iterator cit = calls.begin();
-                b = (*cit)->src();
-            } else {
-                startup_printf("%s[%d] _start has unexpected number (%lu) of"
-                        " call edges, bailing on findMain()\n",
-                        FILE__,__LINE__,calls.size());
-                return -1;
+            for (Function::edgelist::const_iterator cit = calls.begin();
+                 cit != calls.end(); ++cit) {
+                if ((*cit)->src() && (*cit)->src() != entryBlock)
+                    candidates.push_back((*cit)->src());
             }
-            if (!b) return -1;
 
-            Address mainAddress = evaluate_main_address(linkedFile,func,b);
-            mainAddress = deref_opd(linkedFile, mainAddress);
+            Address mainAddress = 0;
+            for (std::vector<Block *>::const_iterator bit = candidates.begin();
+                 bit != candidates.end() && mainAddress == 0; ++bit) {
+                Address cand = evaluate_main_address(linkedFile,func,*bit);
+                cand = deref_opd(linkedFile, cand);
+                if (cand != 0 && scs.isValidAddress(cand))
+                    mainAddress = cand;
+            }
 
-            if(0 == mainAddress || !scs.isValidAddress(mainAddress)) {
+            if(0 == mainAddress) {
                 startup_printf("%s[%d] failed to find main\n",FILE__,__LINE__);
                 return -1;
             } else {
@@ -1091,10 +1154,6 @@ void image::findModByAddr (const Symbol *lookUp, vector<Symbol *> &mods,
   }
 }
 
-unsigned int int_addrHash(const Address& addr) {
-  return (unsigned int)addr;
-}
-
 /*
  * load an executable:
  *   1.) parse symbol table and identify routines.
@@ -1296,7 +1355,14 @@ void image::analyzeImage() {
        {
         SymtabCodeRegion * scr = static_cast<SymtabCodeRegion*>(*rit);
         if(parseGaps_ && scr->symRegion()->isText()) {
+            progress_printf("parse: speculative gap parsing region [%lx,%lx) (%lu KB) -- this is single-threaded and can be very slow on large binaries\n",
+                            (unsigned long)scr->offset(),
+                            (unsigned long)(scr->offset() + scr->length()),
+                            (unsigned long)(scr->length() / 1024));
             obj_->parseGaps(scr);
+            progress_printf("parse: gap parsing done for region [%lx,%lx)\n",
+                            (unsigned long)scr->offset(),
+                            (unsigned long)(scr->offset() + scr->length()));
         }
        } 
    }
@@ -1340,7 +1406,7 @@ image::image(fileDescriptor &desc,
 #endif
    obj_(NULL),
    cs_(NULL),
-   filt(NULL),
+   filt(&nuke_heap),
    img_fact_(NULL),
    parse_cb_(NULL),
    cb_arg0_(NULL),
@@ -1440,23 +1506,12 @@ image::image(fileDescriptor &desc,
    }
 
    // Initialize ParseAPI 
-   filt = NULL;
-
-   /** Optionally eliminate some hints in which Dyninst is not
-       interested **/
-   struct filt_heap : SymtabCodeSource::hint_filt {
-        bool operator()(SymtabAPI::Function * f) {
-            return f && f->getModule() && f->getModule()->fileName() == "DYNINSTheap";
-        }
-    } nuke_heap;
-    filt = &nuke_heap;
-
    bool parseInAllLoadableRegions = (BPatch_normalMode != mode_);
    cs_ = new SymtabCodeSource(linkedFile,filt,parseInAllLoadableRegions);
 
    // Continue ParseAPI init
-   img_fact_ = new DynCFGFactory(this);
-   parse_cb_ = new DynParseCallback(this);
+   img_fact_ = new Dyninst::DyninstAPI::DynCFGFactory(this);
+   parse_cb_ = new Dyninst::DyninstAPI::DynParseCallback(this);
    obj_ = new CodeObject(cs_,img_fact_,parse_cb_,BPatch_defensiveMode == mode);
 
      if (obj_->cs()->getArch() == Arch_ppc64) {

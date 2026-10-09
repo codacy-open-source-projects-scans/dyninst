@@ -1,0 +1,41 @@
+\subsection{Edge Predicates}
+\label{sec:pred}
+
+\declaredin{CFG.h}
+
+Edge predicates control iteration over edges. For example, the provided
+\code{Intraproc} edge predicate can be used with filter iterators and standard
+algorithms, ensuring that only intraprocedural edges are visited during
+iteration. Two other examples of edge predicates are provided:
+\code{SingleContext} only visits edges that stay in a single
+function context, and \code{NoSinkPredicate} does not visit edges to
+the \emph{sink} block.  The following code traverses
+all of the basic blocks within a
+function:
+
+\lstinputlisting{examples/FilteredIteration.C}
+
+Anything that can be treated as a function from \code{Edge*} to a \code{bool} can be used in this manner. This replaces the beta interface where all
+\code{EdgePredicate}s needed to descend from a common parent class. Code that previously constructed iterators from an edge predicate should be replaced
+with equivalent code using filter iterators as follows:
+
+\begin{lstlisting}
+// OLD
+for (Block::edgelist::iterator i = targets.begin(epred);
+      i != targets.end(epred);
+      i++)
+{
+  // ...
+}
+// NEW
+for_each(make_filter_iterator(epred, targets.begin(), targets.end()),
+         make_filter_iterator(epred, targets.end(), targets.end()),
+         loop_body_as_function);
+// NEW (C++11)
+for (auto i = make_filter_iterator(epred, targets.begin(), targets.end());
+      i != make_filter_iterator(epred, targets.end(), targets.end());
+      i++)
+{
+  // ...
+}
+\end{lstlisting}

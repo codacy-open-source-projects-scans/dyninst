@@ -36,31 +36,30 @@
 #include <assert.h>
 #include <stdio.h>
 #include "codegen/RegControl.h"
+#include "common/src/bitmath.h"
 #include "compiler_annotations.h"
-#include "dyninstAPI/src/codegen.h"
-#include "dyninstAPI/src/function.h"
+#include "codegen/codegen.h"
+#include "patching/function.h"
+#include "Symbol.h"
 #include "dyninstAPI/src/emit-x86.h"
 #include "dyninstAPI/src/inst-x86.h"
 #include "dyninstAPI/src/debug.h"
-#include "ast.h"
+#include "ASTs/ast.h"
 #include "dyninstAPI/h/BPatch.h"
 #include "dyninstAPI/h/BPatch_memoryAccess_NP.h"
-#include "registerSpace.h"
+#include "registerSpace/registerSpace.h"
 #include "arch-regs-x86.h"
-#include "dyninstAPI/src/dynProcess.h"
+#include "dynproc/dynProcess.h"
 
 #include "dyninstAPI/src/binaryEdit.h"
 #include "dyninstAPI/src/image.h"
 // get_index...
-#include "dyninstAPI/src/dynThread.h"
+#include "dynproc/dynThread.h"
 #include "ABI.h"
 #include "liveness.h"
-#include "RegisterConversion.h"
+#include "registerSpace/RegisterConversion.h"
 #include "unaligned_memory_access.h"
 #include "codegen/emitters/x86/generators.h"
-
-// where is this defined?
-extern bool isPowerOf2(int value, int &result);
 
 #if defined(DYNINST_CODEGEN_ARCH_X86_64)
 
@@ -554,14 +553,19 @@ void EmitterAMD64::emitDiv(Register dest, Register src1, Register src2, codeGen 
    emitMovRegToReg64(REGNUM_RAX, src1, true, gen);
    gen.markRegDefined(REGNUM_RAX);
    
-   // cqo (sign extend RAX into RDX)
-   emitSimpleInsn(0x48, gen); // REX.W
-   emitSimpleInsn(0x99, gen);
-  
+   // The dividend is RDX:RAX. Sign-extend RAX into RDX for a signed divide;
+   // for an unsigned divide RDX must be zero, since sign-extending a dividend
+   // with its top bit set gives a 128-bit value whose quotient does not fit
+   // in 64 bits and faults with #DE.
    if (s) {
+       // cqo
+       emitSimpleInsn(0x48, gen); // REX.W
+       emitSimpleInsn(0x99, gen);
        // idiv %src2
        emitOpRegReg64(0xF7, 0x7, scratchReg, true, gen);
    } else {
+       // mov $0, %rdx
+       emitMovImmToReg64(REGNUM_RDX, 0, true, gen);
        // div %src2
        emitOpRegReg64(0xF7, 0x6, scratchReg, true, gen);
    }
@@ -577,10 +581,8 @@ void EmitterAMD64::emitDiv(Register dest, Register src1, Register src2, codeGen 
 
 void EmitterAMD64::emitTimesImm(Register dest, Register src1, RegValue src2imm, codeGen &gen)
 {
-   int result = -1;
-
    gen.markRegDefined(dest);
-   if (isPowerOf2(src2imm, result) && result <= MAX_IMM8) {
+   if (can_optimize_as_shift(src2imm, MAX_IMM8)) {
       // immediate is a power of two - use a shift
       // mov %src1, %dest (if needed)
       if (src1 != dest) {
@@ -588,7 +590,8 @@ void EmitterAMD64::emitTimesImm(Register dest, Register src1, RegValue src2imm, 
       }
       // sal dest, result
       // Note: sal and shl are the same
-      emitOpRegImm8_64(0xC1, 4, dest, result, true, gen);
+      const uint8_t bits_to_shift = *Dyninst::ilog2(src2imm);
+      emitOpRegImm8_64(0xC1, 4, dest, bits_to_shift, true, gen);
    }
    else {
       // imul %dest, %src1, $src2imm
@@ -598,20 +601,21 @@ void EmitterAMD64::emitTimesImm(Register dest, Register src1, RegValue src2imm, 
 
 void EmitterAMD64::emitDivImm(Register dest, Register src1, RegValue src2imm, codeGen &gen, bool s)
 {
-   int result = -1;
    gen.markRegDefined(dest);
-   if (isPowerOf2(src2imm, result) && result <= MAX_IMM8) {
+   if (can_optimize_as_shift(src2imm, MAX_IMM8)) {
       // divisor is a power of two - use a shift instruction
       // mov %src1, %dest (if needed)
       if (src1 != dest) {
          emitMovRegToReg64(dest, src1, true, gen);
       }
+
+      const uint8_t bits_to_shift = *Dyninst::ilog2(src2imm);
       if (s) {
           // sar $result, %dest
-          emitOpRegImm8_64(0xC1, 7, dest, result, true, gen);
+          emitOpRegImm8_64(0xC1, 7, dest, bits_to_shift, true, gen);
       } else {
           // shr $result, %dest
-          emitOpRegImm8_64(0xC1, 5, dest, result, true, gen);
+          emitOpRegImm8_64(0xC1, 5, dest, bits_to_shift, true, gen);
       }
    }
    else {
@@ -1436,12 +1440,54 @@ void EmitterAMD64::emitRestoreFlagsFromStackSlot(codeGen &gen)
    emitSimpleInsn(0x9D, gen);
 }
 
+// SysV AMD64 caller-saved ("volatile") GPRs. A standard-ABI callee may clobber
+// these freely, and a caller normally does not keep them live across a call --
+// EXCEPT for GCC IPA-SRA local clones (.isra/.constprop), which co-allocate
+// scratch registers across the call between a clone and its callers. dyninst
+// cannot see that contract from the callee, so it must conservatively preserve
+// any of these that an inserted snippet clobbers (e.g. %r11 trashed by an
+// instrumentation reporter's printf inside an instrumented
+// std::string::operator=.isra.0 clone whose caller kept %r11 live across it).
+static bool isCallerSavedGPR(int enc)
+{
+   switch (enc) {
+      case REGNUM_RAX: case REGNUM_RCX: case REGNUM_RDX:
+      case REGNUM_RSI: case REGNUM_RDI:
+      case REGNUM_R8:  case REGNUM_R9:  case REGNUM_R10: case REGNUM_R11:
+         return true;
+      default:               // RBX, RBP, R12-R15: callee-saved (preserved by the
+         return false;       // inserted call by ABI); RSP handled separately.
+   }
+}
+
+// True if the instrumented function is a GCC local clone (.isra/.constprop/
+// .part/.cold). Only such clones can carry a non-standard calling convention in
+// which a caller keeps a caller-saved register live across a call, so the
+// conservative save below is restricted to them -- ordinary functions keep the
+// normal liveness-based pruning. Uses SymtabAPI's clone predicate so the
+// detection lives in one place (Symbol::isClone: name carries a clone suffix).
+//
+// A function can have several symbol-table names (aliases), so check all of
+// them rather than just the primary symTabName(); treat the function as a clone
+// if any name is a clone name.
+static bool isCloneFunc(baseTramp *inst)
+{
+   if (!inst || !inst->point() || !inst->point()->func())
+      return false;
+   func_instance *f = inst->point()->func();
+   for (auto it = f->symtab_names_begin(); it != f->symtab_names_end(); ++it) {
+      if (Dyninst::SymtabAPI::Symbol::isClone(*it))
+         return true;
+   }
+   return false;
+}
+
 bool shouldSaveReg(registerSlot *reg, baseTramp *inst, bool saveFlags)
-{ 
+{
   if (reg->encoding() == REGNUM_RSP) {
     return false;
   }
-  
+
    if (inst->point()) {
       regalloc_printf("\t shouldSaveReg for BT %p, from 0x%lx\n", (void*)inst, inst->point()->insnAddr() );
    }
@@ -1449,8 +1495,26 @@ bool shouldSaveReg(registerSlot *reg, baseTramp *inst, bool saveFlags)
       regalloc_printf("\t shouldSaveReg for iRPC\n");
    }
    if (reg->liveState != registerSlot::live) {
-      regalloc_printf("\t Reg %u not live, concluding don't save\n", reg->number.getId());
-      return false;
+      // A register that is dead at this point normally need not be preserved.
+      // EXCEPTION: intra-procedural liveness cannot see a caller that keeps a
+      // caller-saved register (e.g. %r10/%r11) live across the call under a
+      // non-standard ABI -- only GCC local clones (.isra/.constprop/...) have
+      // such an ABI. For a clone callee, preserve any caller-saved register the
+      // inserted snippet clobbers even when dead here, or we silently corrupt
+      // the caller. isCloneFunc() is checked first: it is false for almost every
+      // function, so non-clones take the normal "dead -> don't save" path
+      // immediately (and we avoid the per-register clobbered/caller-saved work).
+      bool needSave = isCloneFunc(inst)
+                      && isCallerSavedGPR(reg->encoding())
+                      && (!(inst && inst->validOptimizationInfo())
+                          || inst->definedRegs[reg->encoding()]);
+      if (!needSave) {
+         regalloc_printf("\t Reg %u not live, concluding don't save\n", reg->number.getId());
+         return false;
+      }
+      regalloc_printf("\t Reg %u dead but caller-saved & clobbered on a clone; "
+                      "saving conservatively for non-standard-ABI safety\n", reg->number.getId());
+      // fall through to save
    }
    if (saveFlags) {
       // Saving flags takes up EAX/RAX, and so if they're live they must
@@ -1563,7 +1627,15 @@ bool EmitterAMD64::emitBTSaves(baseTramp* bt,  codeGen &gen)
         //bt->saveFPRs()               &&
         bt->makesCall() );
    bool alignStack = useFPRs || !bt || bt->checkForFuncCalls();
-   bool saveFlags = gen.rs()->checkVolatileRegisters(gen, registerSlot::live);
+   // Live flags only need to be preserved if the instrumentation can
+   // actually change them. On the first generation pass there is no
+   // optimization info yet, so mayClobberFlags() reports true. Once
+   // the body has been generated, definedRegs records every flag it writes
+   // (see baseTramp_x86::accumulateBodyClobbers), so a body that provably
+   // leaves the flags alone -- e.g. a bare ptwrite snippet -- skips the
+   // lahf/seto/%rax spill entirely.
+   bool saveFlags = gen.rs()->checkVolatileRegisters(gen, registerSlot::live)
+                    && (!bt || bt->mayClobberFlags());
    bool createFrame = !bt || bt->needsFrame() || useFPRs;
    bool saveOrigAddr = createFrame && bt->instP();
    // Stores the offset to the location of the previous SP stored 

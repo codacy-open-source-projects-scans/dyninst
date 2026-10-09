@@ -37,7 +37,7 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
-
+#include <unistd.h>
 #include "common/src/Timer.h"
 #include "common/src/dyninst_filesystem.h"
 
@@ -377,23 +377,17 @@ DYNINST_EXPORT Offset Symtab::imageLength() const
     return imageLen_;
 }
 
-DYNINST_EXPORT void Symtab::fixup_code_and_data(Offset newImageOffset,
-                                               Offset newImageLength,
-                                               Offset newDataOffset,
-                                               Offset newDataLength)
-{
-    imageOffset_ = newImageOffset;
-    imageLen_ = newImageLength;
-    dataOffset_ = newDataOffset;
-    dataLen_ = newDataLength;
-
-    // Should we update the underlying Object?
-}
-
 DYNINST_EXPORT const char*  Symtab::getInterpreterName() const 
 {
    if (interpreter_name_.length())
       return interpreter_name_.c_str();
+   return NULL;
+}
+
+DYNINST_EXPORT const char*  Symtab::getSOName() const
+{
+   if (soname_.length())
+      return soname_.c_str();
    return NULL;
 }
  
@@ -996,6 +990,9 @@ bool Symtab::extractInfo(Object *linkedFile)
 
     if (linkedFile->interpreter_name())
        interpreter_name_ = std::string(linkedFile->interpreter_name());
+
+    if (linkedFile->getSOName())
+       soname_ = std::string(linkedFile->getSOName());
 
     entry_address_ = linkedFile->getEntryAddress();
     base_address_ = linkedFile->getBaseAddress();
@@ -1802,51 +1799,6 @@ DYNINST_EXPORT bool Symtab::getMappedRegions(std::vector<Region *> &mappedRegs) 
    return false;
 }
 
-DYNINST_EXPORT bool Symtab::fixup_RegionAddr(const char* name, Offset memOffset, long memSize)
-{
-    Region *sec;
-
-    if (!findRegion(sec, name)) {
-        return false;
-    }
-
-    vector<relocationEntry> relocs;
-    Object *obj = getObject();
-
-    // Fix relocation table with correct memory address
-    if (obj) {
-        obj->get_func_binding_table(relocs);
-
-        for (unsigned i=0; i < relocs.size(); i++) {
-            Offset value = relocs[i].rel_addr();
-            relocs[i].setRelAddr(memOffset + value);
-        }
-    }
-    relocation_table_ = relocs;
-
-    vector<relocationEntry> &relref = sec->getRelocations();
-    for (unsigned i=0; i < relref.size(); i++) {
-        Offset value = relref[i].rel_addr();
-        relref[i].setRelAddr(memOffset + value);
-    }
-
-#if defined(_MSC_VER)
-    regionsByEntryAddr.erase(sec->getMemOffset());
-#endif
-
-    sec->setMemOffset(memOffset);
-    sec->setMemSize(memSize);
-
-#if defined(_MSC_VER)
-    regionsByEntryAddr[sec->getMemOffset()] = sec;
-#endif
-
-    std::sort(codeRegions_.begin(), codeRegions_.end(), sort_reg_by_addr);
-    std::sort(dataRegions_.begin(), dataRegions_.end(), sort_reg_by_addr);
-    std::sort(regions_.begin(), regions_.end(), sort_reg_by_addr);
-    return true;
-}
-
 DYNINST_EXPORT Offset Symtab::getFreeOffset(unsigned size) 
 {
    // Look through sections until we find a gap with
@@ -1912,7 +1864,7 @@ DYNINST_EXPORT Offset Symtab::getFreeOffset(unsigned size)
 	return newaddr;
 
 #else
-	unsigned pgSize = P_getpagesize();
+	unsigned pgSize = getpagesize();
 
 #if defined(os_linux)
 	Object *obj = getObject();
@@ -2046,14 +1998,10 @@ DYNINST_EXPORT bool Symtab::addLibraryPrereq(std::string const& name)
 	{
 		return false;
 	}
-   // remove forward slashes and back slashes
-   size_t size = name.find_last_of("/");
-   size_t lastBS = name.find_last_of("\\");
-   if (lastBS > size) {
-      size = lastBS;
-   }
-
-   string filename = name.substr(size+1);
+   // Record only the basename: a path-qualified DT_NEEDED entry (e.g.,
+   // "./lib.so") is resolved by the loader relative to the CWD instead of
+   // through the normal search path.
+   string filename = Dyninst::filesystem::extract_filename(name);
 
 #if ! defined(os_windows) 
    obj->insertPrereqLibrary(filename);

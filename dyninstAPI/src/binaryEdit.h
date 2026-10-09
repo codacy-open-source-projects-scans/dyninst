@@ -39,10 +39,10 @@
 #include <map>
 #include <memory>
 
-#include "infHeap.h"
+#include "dynproc/infHeap.h"
 #include "addressSpace.h"
 #include "codeRange.h"
-#include "ast.h"
+#include "ASTs/ast.h"
 
 #include "parseAPI/h/InstructionSource.h"
 #include "PatchMgr.h"

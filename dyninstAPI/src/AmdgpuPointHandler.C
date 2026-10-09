@@ -32,8 +32,8 @@
 
 #include "BPatch_addressSpace.h"
 #include "BPatch_module.h"
-#include "RegisterConversion.h"
-#include "instPoint.h"
+#include "registerSpace/RegisterConversion.h"
+#include "patching/instPoint.h"
 #include "liveness.h"
 
 // The raw kernel descriptor
@@ -42,7 +42,7 @@
 // Our wrapper around it
 #include "AmdgpuKernelDescriptor.h"
 
-#include "ast.h"
+#include "ASTs/ast.h"
 #include "debug.h"
 
 #include <cassert>

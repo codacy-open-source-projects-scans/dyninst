@@ -33,10 +33,10 @@
 #include "dyninstAPI/src/mapped_module.h"
 #include "dyninstAPI/src/mapped_object.h"
 #include "dyninstAPI/src/image.h"
-#include "dyninstAPI/src/function.h"
+#include "patching/function.h"
 #include "dyninstAPI/src/debug.h"
 #include "dyninstAPI/src/addressSpace.h"
-#include "dyninstAPI/src/dynProcess.h"
+#include "dynproc/dynProcess.h"
 #include <iomanip>
 #include <string>
 
@@ -219,10 +219,11 @@ std::string mapped_module::processDirectories(const std::string &fn) const
 
    int count = 0;
    char* pPathLocs[1024];
-   char* p = strtok(pPath,"/");
+   char* strtok_save{};
+   char* p = strtok_r(pPath,"/",&strtok_save);
    while(p){
       if(!strcmp(p,".")){
-         p = strtok(NULL,"/");
+         p = strtok_r(NULL,"/",&strtok_save);
          continue;
       }
       else if(!strcmp(p,"..")){
@@ -238,7 +239,7 @@ std::string mapped_module::processDirectories(const std::string &fn) const
       else
          pPathLocs[count++] = p;
 
-      p = strtok(NULL,"/");
+      p = strtok_r(NULL,"/",&strtok_save);
    }
 
    ret += prefix;

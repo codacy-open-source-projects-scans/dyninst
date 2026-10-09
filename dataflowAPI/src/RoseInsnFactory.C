@@ -32,7 +32,6 @@
 #include "Instruction.h"
 #include "Dereference.h"
 #include "Immediate.h"
-#include "instructionAPI/src/InstructionDecoderImpl.h"
 #include "MultiRegister.h"
 
 #include "../rose/SgAsmInstruction.h"
@@ -194,7 +193,7 @@ void RoseInsnX86Factory::massageOperands(const Instruction &insn,
     // Nada
     operands.clear();
     break;
-  case e_popaw:
+  case e_popad:
   case e_pushf:
     operands.clear();
     break;
@@ -203,7 +202,7 @@ void RoseInsnX86Factory::massageOperands(const Instruction &insn,
   case e_lodsw:
       operands.clear();
       break;
-  case e_pushal:
+  case e_pusha:
       operands.clear();
       break;
   case e_loop:
@@ -461,7 +460,8 @@ void RoseInsnAMDGPUFactory::massageOperands(const Instruction &insn,
     // Similar concept for SETPC and GETPC
     case amdgpu_gfx908_op_S_SWAPPC_B64:
     case amdgpu_gfx90a_op_S_SWAPPC_B64: 
-    case amdgpu_gfx940_op_S_SWAPPC_B64: {
+    case amdgpu_gfx940_op_S_SWAPPC_B64:
+    case amdgpu_gfx950_op_S_SWAPPC_B64: {
         assert(operands.size() == 2);
         operands.reserve(4);
         MultiRegisterAST::Ptr dst_regs  = boost::dynamic_pointer_cast<MultiRegisterAST>(operands[0].getValue());
@@ -476,7 +476,8 @@ void RoseInsnAMDGPUFactory::massageOperands(const Instruction &insn,
     }
     case amdgpu_gfx908_op_S_SETPC_B64:
     case amdgpu_gfx90a_op_S_SETPC_B64: 
-    case amdgpu_gfx940_op_S_SETPC_B64: {
+    case amdgpu_gfx940_op_S_SETPC_B64:
+    case amdgpu_gfx950_op_S_SETPC_B64: {
         assert(operands.size() == 1);
         operands.reserve(2);
         MultiRegisterAST::Ptr src_regs  = boost::dynamic_pointer_cast<MultiRegisterAST>(operands[0].getValue());
@@ -485,9 +486,38 @@ void RoseInsnAMDGPUFactory::massageOperands(const Instruction &insn,
         operands.push_back(Operand(src_reg_asts[1]));
         break;
     }
+    // S_MOV_B64 dst_pair, src : split the destination pair into two 32-bit halves; if the source is
+    // also a register pair split it too (4 operands), otherwise keep an immediate/scalar source whole
+    // (3 operands). The semantics handler (IP_s_mov_b64) dispatches on the resulting operand count.
+    case amdgpu_gfx908_op_S_MOV_B64:
+    case amdgpu_gfx90a_op_S_MOV_B64:
+    case amdgpu_gfx940_op_S_MOV_B64:
+    case amdgpu_gfx950_op_S_MOV_B64: {
+        assert(operands.size() == 2);
+        MultiRegisterAST::Ptr dst_regs = boost::dynamic_pointer_cast<MultiRegisterAST>(operands[0].getValue());
+        if(!dst_regs) break;   // unexpected shape; leave operands untouched
+        const std::vector<RegisterAST::Ptr> & dst_reg_asts = dst_regs->getRegs();
+        MultiRegisterAST::Ptr src_regs = boost::dynamic_pointer_cast<MultiRegisterAST>(operands[1].getValue());
+        if(src_regs){
+            const std::vector<RegisterAST::Ptr> & src_reg_asts = src_regs->getRegs();
+            operands.reserve(4);
+            operands[0] = Operand(dst_reg_asts[0]);
+            operands[1] = Operand(dst_reg_asts[1]);
+            operands.push_back(Operand(src_reg_asts[0]));
+            operands.push_back(Operand(src_reg_asts[1]));
+        }else{
+            Operand src = operands[1];      // immediate / scalar source kept whole
+            operands.reserve(3);
+            operands[0] = Operand(dst_reg_asts[0]);
+            operands[1] = Operand(dst_reg_asts[1]);
+            operands.push_back(src);
+        }
+        break;
+    }
     case amdgpu_gfx908_op_S_GETPC_B64:
-    case amdgpu_gfx90a_op_S_GETPC_B64: 
-    case amdgpu_gfx940_op_S_GETPC_B64: {
+    case amdgpu_gfx90a_op_S_GETPC_B64:
+    case amdgpu_gfx940_op_S_GETPC_B64:
+    case amdgpu_gfx950_op_S_GETPC_B64: {
         assert(operands.size() == 1);
         operands.reserve(3);
         MultiRegisterAST::Ptr dst_regs  = boost::dynamic_pointer_cast<MultiRegisterAST>(operands[0].getValue());

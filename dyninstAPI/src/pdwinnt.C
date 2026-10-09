@@ -30,30 +30,29 @@
 
 #include <iomanip>
 #include <string>
-#include "common/src/headers.h"
 #include "dyninstAPI/src/os.h"
 #include "dyninstAPI/src/addressSpace.h"
 #include "binaryEdit.h"
 #include "common/src/stats.h"
 #include "dyninstAPI/src/debug.h"
-#include "dyninstAPI/src/instPoint.h"
+#include "patching/instPoint.h"
 #include "common/src/ntHeaders.h"
 #include "dyninstAPI/src/mapped_object.h"
 #include "dyninstAPI/src/emit-x86.h"
 #include "common/src/arch-x86.h"
 #include "dyninstAPI/src/inst-x86.h"
-#include "registerSpace.h"
+#include "registerSpace/registerSpace.h"
 #include "image.h"
 #include <boost/tuple/tuple.hpp>
 
-#include "dyninstAPI/src/function.h"
-#include "dynProcess.h"
+#include "patching/function.h"
+#include "dynproc/dynProcess.h"
 
 /* XXX This is only needed for emulating signals. */
 #include "BPatch_thread.h"
 #include "BPatch_process.h"
 #include "nt_signal_emul.h"
-#include "dyninstAPI/src/PCEventMuxer.h"
+#include "dynproc/pcEventMuxer.h"
 
 // prototypes of functions used in this file
 
@@ -224,39 +223,6 @@ bool getLWPIDs(std::vector <unsigned> &LWPids)
 {
   assert (0 && "Not implemented");
   return false;
-}
-
-
-bool AddressSpace::getDyninstRTLibName() {
-    // Set the name of the dyninst RT lib
-    if (dyninstRT_name.length() == 0) {
-        // Get env variable
-        if (getenv("DYNINSTAPI_RT_LIB") != NULL) {
-            dyninstRT_name = getenv("DYNINSTAPI_RT_LIB");
-        }
-        else {
-            std::string msg = std::string("Environment variable ") +
-               std::string("DYNINSTAPI_RT_LIB") +
-               std::string(" has not been defined");
-            showErrorCallback(101, msg);
-            return false;
-        }
-    }
-    //Canonicalize name
-    char *sptr = P_strdup(dyninstRT_name.c_str());
-    for (unsigned i=0; i<strlen(sptr); i++)
-       if (sptr[i] == '/') sptr[i] = '\\';
-    dyninstRT_name = sptr;
-    free(sptr);
-           
-    if (_access(dyninstRT_name.c_str(), 04)) {
-        std::string msg = std::string("Runtime library ") + dyninstRT_name +
-                       std::string(" does not exist or cannot be accessed!");
-        showErrorCallback(101, msg);
-        return false;
-    }
-
-    return true;
 }
 
 void loadNativeDemangler() 
@@ -903,10 +869,6 @@ bool PCEventHandler::isValidRTSignal(int signal, PCEventHandler::RTBreakpointVal
 	return false;
 }
 
-bool AddressSpace::usesDataLoadAddress() const
-{
-	return false;
-}
 bool PCProcess::setEnvPreload(std::vector<std::string> &envp, std::string fileName)
 {
 	// We don't LD_PRELOAD on Windows

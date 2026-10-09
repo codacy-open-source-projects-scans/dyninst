@@ -53,7 +53,6 @@
 #include "Variable.h"
 #include "emitWin.h"
 #include "SymReader.h"
-#include "common/src/headers.h"
 
 using namespace Dyninst;
 using namespace Dyninst::SymtabAPI;
@@ -836,10 +835,10 @@ void Object::FindInterestingSections(bool alloc_syms, bool defensive)
    SecAlignment = peHdr ->OptionalHeader.SectionAlignment;
    unsigned int nSections = peHdr->FileHeader.NumberOfSections;
    no_of_sections_ = nSections;
-   Address prov_begin = (Address)-1;
-   Address prov_end = (Address)-1;
-   code_off_ = (Address)-1;
-   code_len_ = (Address)-1;
+   Address prov_begin = Dyninst::ADDRESS_INVALID;
+   Address prov_end = Dyninst::ADDRESS_INVALID;
+   code_off_ = Dyninst::ADDRESS_INVALID;
+   code_len_ = Dyninst::ADDRESS_INVALID;
 
    if (defensive) {
        // add section for peHdr, determine the size taken up by the section 
@@ -1698,12 +1697,12 @@ static Type *getUDTType(HANDLE p, Offset base, int typeIndex, Module *mod) {
         childName = NULL;
         result = SymGetTypeInfo(p, base, children->ChildId[i], TI_GET_SYMTAG, &symtag);
         if (result && symtag == SymTagBaseClass) {
-            childName = P_strdup("{superclass}");
+            childName = strdup("{superclass}");
         }
         if (!childName)
             childName = getTypeName(p, base, children->ChildId[i]);
         if (!childName) 
-            childName = P_strdup(child_type->getName().c_str());
+            childName = strdup(child_type->getName().c_str());
 
         // Find the offset of this member in the structure
         result = SymGetTypeInfo(p, base, children->ChildId[i], TI_GET_OFFSET, &child_offset);

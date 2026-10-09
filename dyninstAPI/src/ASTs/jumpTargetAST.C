@@ -1,8 +1,8 @@
 #include "arch-regs-x86.h"
 #include "ast_helpers.h"
-#include "block.h"
-#include "codegen.h"
-#include "instPoint.h"
+#include "patching/block.h"
+#include "codegen/codegen.h"
+#include "patching/instPoint.h"
 #include "Instruction.h"
 #include "jumpTargetAST.h"
 
@@ -28,11 +28,11 @@ bool dynamicJumpTargetAST::generateCode_phase2(codeGen &gen, Address &retAddr,
     }
 
 #if defined(DYNINST_CODEGEN_ARCH_I386)
-    emitVload(loadRegRelativeOp, (Address)0, REGNUM_ESP, retReg, gen);
+    gen.emitter()->emitVload(loadRegRelativeOp, (Address)0, REGNUM_ESP, retReg, gen);
 #elif defined(DYNINST_CODEGEN_ARCH_X86_64)
-    emitVload(loadRegRelativeOp, (Address)0, REGNUM_RSP, retReg, gen);
+    gen.emitter()->emitVload(loadRegRelativeOp, (Address)0, REGNUM_RSP, retReg, gen);
 #elif defined(DYNINST_CODEGEN_ARCH_POWER) // KEVINTODO: untested
-    emitVload(loadRegRelativeOp, (Address)sizeof(Address), REG_SP, retReg, gen);
+    gen.emitter()->emitVload(loadRegRelativeOp, (Address)sizeof(Address), REG_SP, retReg, gen);
 #elif defined(DYNINST_CODEGEN_ARCH_AARCH64)
     // #warning "This function is not implemented yet!"
     assert(0);

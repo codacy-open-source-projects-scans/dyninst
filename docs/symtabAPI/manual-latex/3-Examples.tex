@@ -1,0 +1,34 @@
+\section{Simple Examples}
+
+To illustrate the ideas in the API, this section presents several short examples
+that demonstrate how the API can be used.  SymtabAPI has the ability to parse
+files that are on-disk or present in memory. The user program starts by
+requesting SymtabAPI to parse an object file. SymtabAPI returns a handle if the
+parsing succeeds, whcih can be used for further interactions with the SymtabAPI
+library. The following example shows how to parse a shared object file on disk.
+
+\lstinputlisting{examples/ParseFile.C}
+
+Once the object file is parsed successfully and the handle is obtained, symbol look up and update operations can be performed in the following way:
+
+\lstinputlisting{examples/LookupAndUpdate.C}
+
+\newpage
+
+New symbols, functions, and variables can be created and added to the library at any point using the handle returned by successful parsing of the object file. When possible, add a function or variable rather than a symbol directly.
+
+\lstinputlisting{examples/AddVariable.C}
+
+SymtabAPI gives the ability to query type information present in the object file. Also, new user defined types can be added to SymtabAPI. The following example shows both how to query type information after an object file is successfully parsed and also add a new structure type.
+
+\lstinputlisting{examples/CreateType.C}
+
+Users can also query line number information present in an object file. The following example shows how to use SymtabAPI to get the address range for a line number within a source file.
+
+\lstinputlisting{examples/LineNumbers.C}
+
+Local variable information can be obtained using symtabAPI. You can query for a local variable within the entire object file or just within a function. The following example shows how to find local variable foo within function bar.
+
+\lstinputlisting{examples/LocalVariables.C}
+
+The rest of this document describes the class hierarchy and the API in detail.

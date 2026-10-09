@@ -70,7 +70,6 @@
 #include "snippets.h"
 
 #include "common/src/linuxKludges.h"
-#include "linuxHeaders.h"
 #include "common/src/AuxvParser.h"
 
 #include "boost/shared_ptr.hpp"
@@ -144,7 +143,7 @@ bool GeneratorLinux::initialize()
     }
 
     generator_lwp = P_gettid();
-    generator_pid = P_getpid();
+    generator_pid = getpid();
     return true;
 }
 
@@ -218,7 +217,7 @@ void GeneratorLinux::evictFromWaitpid()
 {
    if (!generator_lwp)
       return;
-   if (generator_pid != P_getpid())
+   if (generator_pid != getpid())
       return;
 
    //Throw a SIGUSR2 at the generator thread.  This will kick it out of

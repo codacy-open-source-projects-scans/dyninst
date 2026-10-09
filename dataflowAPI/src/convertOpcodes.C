@@ -695,9 +695,9 @@ X86InstructionKind RoseInsnX86Factory::convertKind(entryID opcode, prefixEntryID
             return x86_pmuludq;
         case e_pop:
             return x86_pop;
-        case e_popal:
+        case e_popa:
             return x86_popa;
-        case e_popaw:
+        case e_popad:
             return x86_popad;
         case e_popf:
             return x86_popf;
@@ -769,7 +769,7 @@ X86InstructionKind RoseInsnX86Factory::convertKind(entryID opcode, prefixEntryID
             return x86_punpcklwd;
         case e_push:
             return x86_push;
-        case e_pushal:
+        case e_pusha:
             return x86_pushad;
         case e_pushf:
             return x86_pushf;
@@ -956,8 +956,6 @@ X86InstructionKind RoseInsnX86Factory::convertKind(entryID opcode, prefixEntryID
         case e_xorps:
             return x86_xorps;
         case e_fp_generic:
-            return x86_unknown_instruction;
-        case e_3dnow_generic:
             return x86_unknown_instruction;
         default:
             return x86_unknown_instruction;
@@ -2265,18 +2263,30 @@ AMDGPUInstructionKind RoseInsnAMDGPUFactory::convertKind(entryID opcode) {
         case amdgpu_gfx908_op_S_GETPC_B64 : return rose_amdgpu_op_s_getpc_b64;
         case amdgpu_gfx908_op_S_ADD_U32 : return rose_amdgpu_op_s_add_u32;
         case amdgpu_gfx908_op_S_ADDC_U32 : return rose_amdgpu_op_s_addc_u32;
+        case amdgpu_gfx908_op_S_MOV_B32 : return rose_amdgpu_op_s_mov_b32;
+        case amdgpu_gfx908_op_S_MOV_B64 : return rose_amdgpu_op_s_mov_b64;
 
         case amdgpu_gfx90a_op_S_SETPC_B64 : return rose_amdgpu_op_s_setpc_b64;
         case amdgpu_gfx90a_op_S_SWAPPC_B64 : return rose_amdgpu_op_s_swappc_b64;
         case amdgpu_gfx90a_op_S_GETPC_B64 : return rose_amdgpu_op_s_getpc_b64;
         case amdgpu_gfx90a_op_S_ADD_U32 : return rose_amdgpu_op_s_add_u32;
         case amdgpu_gfx90a_op_S_ADDC_U32 : return rose_amdgpu_op_s_addc_u32;
+        case amdgpu_gfx90a_op_S_MOV_B32 : return rose_amdgpu_op_s_mov_b32;
+        case amdgpu_gfx90a_op_S_MOV_B64 : return rose_amdgpu_op_s_mov_b64;
 
         case amdgpu_gfx940_op_S_SETPC_B64 : return rose_amdgpu_op_s_setpc_b64;
         case amdgpu_gfx940_op_S_SWAPPC_B64 : return rose_amdgpu_op_s_swappc_b64;
         case amdgpu_gfx940_op_S_GETPC_B64 : return rose_amdgpu_op_s_getpc_b64;
         case amdgpu_gfx940_op_S_ADD_U32 : return rose_amdgpu_op_s_add_u32;
         case amdgpu_gfx940_op_S_ADDC_U32 : return rose_amdgpu_op_s_addc_u32;
+        case amdgpu_gfx940_op_S_MOV_B32 : return rose_amdgpu_op_s_mov_b32;
+        case amdgpu_gfx940_op_S_MOV_B64 : return rose_amdgpu_op_s_mov_b64;
+
+        case amdgpu_gfx950_op_S_SETPC_B64 : return rose_amdgpu_op_s_setpc_b64;
+        case amdgpu_gfx950_op_S_SWAPPC_B64 : return rose_amdgpu_op_s_swappc_b64;
+        case amdgpu_gfx950_op_S_GETPC_B64 : return rose_amdgpu_op_s_getpc_b64;
+        case amdgpu_gfx950_op_S_ADD_U32 : return rose_amdgpu_op_s_add_u32;
+        case amdgpu_gfx950_op_S_ADDC_U32 : return rose_amdgpu_op_s_addc_u32;
 
         default: return rose_amdgpu_op_INVALID;
     }

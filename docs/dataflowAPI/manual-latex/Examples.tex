@@ -1,0 +1,36 @@
+\section{Examples}
+\label{sec:examples}
+We show several examples of how to use DataflowAPI. In these examples, we assume
+that the mutatee has been parsed and we have function and block objects to analyze.
+Users may refer to the ParseAPI manual for how to obtain these function and block objects.
+
+\subsection{Slicing}
+The following example uses DataflowAPI to perform a backward slice on an
+indirect jump instruction to determine the instructions that affect the
+calculation of the jump target. The goal of this example is to show (1) how to
+convert an instruction to assignments; (2) how to perform slicing on a given
+assignment; (3) how to extend the default \texttt{Slicer::Predicates} and write
+call back functions to control the behavior of slicing.
+
+\lstinputlisting{examples/Slicing.C}
+
+
+\subsection{Symbolic Evaluation}
+The following example shows how to expand a slice to ASTs and analyze an AST.
+Suppose we have a slice representing the instructions that affect the jump
+target of an indirect jump instruction.
+We can get the expression of the jump targets and visit the expression to see if it
+is a constant.
+
+\lstinputlisting{examples/SymbolicEvaluation.C}
+
+\subsection{Liveness Analysis}
+The following example shows how to query for live registers.
+
+\lstinputlisting{examples/LivenessAnalysis.C}
+
+\subsection{Stack Analysis}
+The following example shows how to use stack analysis to print out all defined stack heights at the first instruction in a block.
+
+\lstinputlisting{examples/StackAnalysis.C}
+

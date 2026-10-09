@@ -52,7 +52,6 @@
 #include "Symtab.h"
 #include "Module.h"
 #include "LineInformation.h"
-#include "common/src/headers.h"
 #include "common/src/MappedFile.h"
 #include "common/src/lprintf.h"
 
@@ -147,6 +146,8 @@ public:
     virtual bool hasDebugInfo() { return false; }
     virtual void getDependencies(std::vector<std::string> &deps) { deps.clear(); }
     virtual const char *interpreter_name() const { return NULL; }
+    // DT_SONAME, for object formats that have one.  NULL otherwise.
+    virtual const char *getSOName() const { return NULL; }
     virtual Offset getEntryAddress() const = 0;
     virtual Offset getBaseAddress() const = 0;
     virtual Offset getLoadAddress() const = 0;

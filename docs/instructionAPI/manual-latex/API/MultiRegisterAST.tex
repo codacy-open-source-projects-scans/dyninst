@@ -1,0 +1,104 @@
+\subsection{Class MultiRegisterAST}
+\label{sec:MultiRegisterAST}
+
+\declaredin{MultiRegister.h}
+
+A \code{MultiRegisterAST} object represents an ordered collection of registers
+as a single operand. As a \code{MultiRegisterAST} is an \code{Expression}, it
+may contain the physical registers' contents if they are known.
+
+
+\begin{apient}
+typedef boost::shared_ptr<MultiRegisterAST> Ptr;
+\end{apient}
+\apidesc{
+A type definition for a reference-counted pointer to a \code{MultiRegisterAST}.
+}
+
+\begin{apient}
+MultiRegisterAST(MachRegister r, uint32_t num_elements = 1);
+\end{apient}
+\apidesc{
+Construct a collection of \code{num\_elements} consecutive registers beginning
+at \code{r}. The registers after the first are formed by incrementing the
+register number of \code{r}, so a collection built this way is always
+consecutive. The \code{MachRegister} datatype is Dyninst's register
+representation and should not be constructed manually.
+}
+
+\begin{apient}
+MultiRegisterAST(std::vector<RegisterAST::Ptr> _in);
+\end{apient}
+\apidesc{
+Construct a collection from the registers in \code{\_in}, keeping their order.
+\code{\_in} must not be empty, as its first element supplies the base register.
+The registers given need not be consecutive.
+}
+
+\begin{apient}
+bool isUsed(Expression::Ptr findMe) const;
+\end{apient}
+\apidesc{
+\code{isUsed} is meant to return \code{true} if \code{findMe} is a
+\code{MultiRegisterAST} holding the same registers, in the same order, as this
+one. It compares the constituent \code{RegisterAST::Ptr} values rather than the
+registers they refer to, so it holds only when the two objects share their
+element objects. A \code{MultiRegisterAST} built
+separately for the same registers returns \code{false}, which is why
+\code{Operand::isRead} and \code{Operand::isWritten} do not answer \code{true}
+for a candidate the caller constructed. Every other \code{Expression} in this
+interface compares by value.
+}
+
+\begin{apient}
+std::string format(formatStyle how = defaultStyle) const;
+\end{apient}
+\apidesc{
+Returns the constituent registers, each formatted in turn, separated by commas
+and enclosed in brackets, as in \code{[RAX,RBX]}.
+}
+
+\begin{apient}
+bool operator<(const MultiRegisterAST& rhs) const;
+\end{apient}
+\apidesc{
+Orders two \code{MultiRegisterAST} objects so that they may be placed into sets
+or other sorted containers. Like \code{isUsed} it compares the constituent
+\code{RegisterAST::Ptr} values rather than the registers, so the order is by
+address and does not follow the register numbers.
+}
+
+\begin{apient}
+RegisterAST::Ptr getBaseRegAST() const;
+\end{apient}
+\apidesc{
+Returns the first register of the collection. For a collection constructed
+from a starting register and a count, this is the register it started from.
+}
+
+\begin{apient}
+uint32_t length() const;
+\end{apient}
+\apidesc{
+Returns the number of registers in the collection.
+}
+
+\begin{apient}
+const std::vector<RegisterAST::Ptr>& getRegs() const;
+\end{apient}
+\apidesc{
+Returns the registers themselves, in the order the collection holds them.
+This is the only way to reach them individually.
+}
+
+\begin{apient}
+bool areConsecutive() const;
+\end{apient}
+\apidesc{
+Returns \code{true} if the registers are known to be consecutive, which tells
+a caller which of the two constructors produced this object. A collection
+built from a starting register and a count is consecutive by construction;
+one built from a vector of registers is not, since the registers in it are
+taken as given.
+}
+

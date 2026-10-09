@@ -34,9 +34,9 @@
 #include "BPatch_process.h"
 #include "BPatch_function.h"
 #include "BPatch_module.h"
-#include "instPoint.h"
-#include "function.h"
-#include "dynProcess.h"
+#include "patching/instPoint.h"
+#include "patching/function.h"
+#include "dynproc/dynProcess.h"
 #include "PatchModifier.h"
 #include "BPatch_image.h"
 #include "mapped_object.h"
@@ -635,9 +635,10 @@ void HybridAnalysis::badTransferCB(BPatch_point *point, void *returnValue)
 
     time_t tstruct;
     struct tm * tmstruct;
+    struct tm tmv;
     char timeStr[64];
     time( &tstruct );
-    tmstruct = localtime( &tstruct );
+    tmstruct = localtime_r( &tstruct, &tmv );
     strftime(timeStr, 64, "%X", tmstruct);
 
     mal_printf("badTransferCB %lx=>%lx %s\n\n", pointAddr, target, timeStr);
@@ -895,7 +896,7 @@ void HybridAnalysis::badTransferCB(BPatch_point *point, void *returnValue)
     // return addresses, since this jump might be a tail call
     for (unsigned tidx=0; tidx < targFuncs.size(); tidx++) {
         parse_func *imgfunc = targFuncs[tidx]->lowlevel_func()->ifunc();
-        FuncReturnStatus initStatus = imgfunc->init_retstatus();
+        ParseAPI::FuncReturnStatus initStatus = imgfunc->init_retstatus();
         if (ParseAPI::RETURN == initStatus) {
             imgfunc->setinit_retstatus(ParseAPI::UNKNOWN);
             removeInstrumentation(targFuncs[tidx],false,false);

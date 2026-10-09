@@ -34,11 +34,11 @@
 #include "codeRange.h"
 
 #include "dyninstAPI/src/image.h"
-#include "baseTramp.h"
+#include "trampolines/baseTramp.h"
 #include "dyninstAPI/src/mapped_object.h"
-#include "dyninstAPI/src/function.h"
-#include "dyninstAPI/src/instPoint.h"
-#include "dyninstAPI/src/dynProcess.h"
+#include "patching/function.h"
+#include "patching/instPoint.h"
+#include "dynproc/dynProcess.h"
 
 inferiorRPCinProgress * codeRange::is_inferior_rpc() {
 	return dynamic_cast< inferiorRPCinProgress * >( this );

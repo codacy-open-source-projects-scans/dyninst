@@ -317,11 +317,6 @@ class DYNINST_EXPORT Symtab : public LookupInterface,
 
    bool getSegments(std::vector<Segment> &segs) const;
    
-   void fixup_code_and_data(Offset newImageOffset,
-                                          Offset newImageLength,
-                                          Offset newDataOffset,
-                                          Offset newDataLength);
-   bool fixup_RegionAddr(const char* name, Offset memOffset, long memSize);
    Offset getFreeOffset(unsigned size);
 
    bool addLibraryPrereq(std::string const& libname);
@@ -354,6 +349,10 @@ class DYNINST_EXPORT Symtab : public LookupInterface,
 
    const char*  getInterpreterName() const;
 
+   // DT_SONAME of this object, or NULL when it has none.  This is the name other
+   // objects link against, which is NOT necessarily the name of the file on disk.
+   const char*  getSOName() const;
+
    unsigned getAddressWidth() const;
    bool isBigEndianDataEncoding() const;
    bool getABIVersion(int &major, int &minor) const;
@@ -384,7 +383,6 @@ class DYNINST_EXPORT Symtab : public LookupInterface,
    static void setSymtabError(SymtabError new_err);
    static std::string printError(SymtabError serr);
 
-   bool delSymbol(Symbol *sym) { return deleteSymbol(sym); }
    bool deleteSymbol(Symbol *sym); 
 
    /***** Private Member Functions *****/
@@ -479,6 +477,7 @@ class DYNINST_EXPORT Symtab : public LookupInterface,
 
    unsigned address_width_{sizeof(int)};
    std::string interpreter_name_{};
+   std::string soname_{};
    Offset entry_address_{};
    Offset base_address_{};
    Offset load_address_{};

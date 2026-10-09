@@ -125,6 +125,7 @@ IA_IAPI* IA_IAPI::makePlatformIA_IAPI(Architecture arch,
         case Arch_amdgpu_gfx908:
         case Arch_amdgpu_gfx90a:
         case Arch_amdgpu_gfx940:
+        case Arch_amdgpu_gfx950:
 
             return new IA_amdgpu(dec_, where_, o, r, isrc, curBlk_);
  
@@ -150,6 +151,7 @@ void IA_IAPI::initASTs()
                 framePtr[Arch_amdgpu_gfx908] = RegisterAST::Ptr(new RegisterAST(MachRegister::getFramePointer(Arch_amdgpu_gfx908)));
                 framePtr[Arch_amdgpu_gfx90a] = RegisterAST::Ptr(new RegisterAST(MachRegister::getFramePointer(Arch_amdgpu_gfx90a)));
                 framePtr[Arch_amdgpu_gfx940] = RegisterAST::Ptr(new RegisterAST(MachRegister::getFramePointer(Arch_amdgpu_gfx940)));
+                framePtr[Arch_amdgpu_gfx950] = RegisterAST::Ptr(new RegisterAST(MachRegister::getFramePointer(Arch_amdgpu_gfx950)));
             }
             if(stackPtr.empty())
             {
@@ -162,6 +164,7 @@ void IA_IAPI::initASTs()
                 stackPtr[Arch_amdgpu_gfx908] = RegisterAST::Ptr(new RegisterAST(MachRegister::getStackPointer(Arch_amdgpu_gfx908)));
                 stackPtr[Arch_amdgpu_gfx90a] = RegisterAST::Ptr(new RegisterAST(MachRegister::getStackPointer(Arch_amdgpu_gfx90a)));
                 stackPtr[Arch_amdgpu_gfx940] = RegisterAST::Ptr(new RegisterAST(MachRegister::getStackPointer(Arch_amdgpu_gfx940)));
+                stackPtr[Arch_amdgpu_gfx950] = RegisterAST::Ptr(new RegisterAST(MachRegister::getStackPointer(Arch_amdgpu_gfx950)));
             }
             if(thePC.empty())
             {
@@ -174,6 +177,7 @@ void IA_IAPI::initASTs()
                 thePC[Arch_amdgpu_gfx908] = RegisterAST::Ptr(new RegisterAST(MachRegister::getPC(Arch_amdgpu_gfx908)));
                 thePC[Arch_amdgpu_gfx90a] = RegisterAST::Ptr(new RegisterAST(MachRegister::getPC(Arch_amdgpu_gfx90a)));
                 thePC[Arch_amdgpu_gfx940] = RegisterAST::Ptr(new RegisterAST(MachRegister::getPC(Arch_amdgpu_gfx940)));
+                thePC[Arch_amdgpu_gfx950] = RegisterAST::Ptr(new RegisterAST(MachRegister::getPC(Arch_amdgpu_gfx950)));
             }
             ANNOTATE_HAPPENS_BEFORE(&IA_IAPI::ptrInit);
     });
@@ -434,6 +438,14 @@ bool IA_IAPI::isDynamicCall() const
         bool success;
         boost::tie(success, addr) = getCFT();
         if (!success) {
+            if (cftHasUnresolvedReloc()) {
+                // A direct call whose displacement awaits link-time
+                // relocation (unlinked object file): the callee is
+                // statically unknown, but the call is not through a
+                // register or memory operand.
+                parsing_printf("... Call 0x%lx has an unresolved relocation, not dynamic\n", current);
+                return false;
+            }
             parsing_printf("... Call 0x%lx is indirect\n", current);
             return true;
         }
@@ -486,6 +498,14 @@ bool IA_IAPI::isIndirectJump() const {
     Address target;
     boost::tie(valid, target) = getCFT(); 
     if (valid) return false;
+    if (cftHasUnresolvedReloc()) {
+        // Not a jump table: the target carries an unapplied relocation
+        // (unlinked object file), so any bytes an indirect-target
+        // analysis would read are placeholders. Handled as a tail call
+        // to an unknown target in getNewEdges instead.
+        parsing_printf("... jump with unresolved relocation at 0x%lx, not treating as indirect\n", current);
+        return false;
+    }
     parsing_printf("... indirect jump at 0x%lx, delay parsing it\n", current);
     return true;
 }
@@ -494,7 +514,7 @@ void IA_IAPI::parseSyscall(std::vector<std::pair<Address, EdgeTypeEnum> >& outEd
 {
     parsing_printf("[%s:%d] Treating syscall as call to sink w/ possible FT edge to next insn at 0x%lx\n",
             FILE__, __LINE__, getAddr());
-    outEdges.push_back(std::make_pair((Address)-1,CALL));
+    outEdges.push_back(std::make_pair(Dyninst::ADDRESS_INVALID,CALL));
     outEdges.push_back(std::make_pair(getNextAddr(), CALL_FT));
 }
 
@@ -536,9 +556,11 @@ void IA_IAPI::getNewEdges(std::vector<std::pair< Address, EdgeTypeEnum> >& outEd
     // Only call this on control flow instructions!
     if(ci.isCall())
     {
-        bool success; 
+        bool success;
         Address target;
         boost::tie(success, target) = getCFT();
+        if (!success)
+            boost::tie(success, target) = resolveDynamicCallTarget(context, currBlk);
         bool callEdge = true;
         bool ftEdge = true;
         if( success && !isDynamicCall() )
@@ -610,7 +632,14 @@ void IA_IAPI::getNewEdges(std::vector<std::pair< Address, EdgeTypeEnum> >& outEd
     {
         if(ci.allowsFallThrough())
         {
-            outEdges.push_back(std::make_pair(getCFT().second,
+            bool takenValid;
+            Address takenTarget;
+            boost::tie(takenValid, takenTarget) = getCFT();
+            // An undefined taken-target (e.g. an unapplied relocation on
+            // the displacement in an unlinked object file) must go to the
+            // sink, not to whatever placeholder constant was encoded.
+            outEdges.push_back(std::make_pair(
+                        takenValid ? takenTarget : Dyninst::ADDRESS_INVALID,
                         COND_TAKEN));
             outEdges.push_back(std::make_pair(getNextAddr(), COND_NOT_TAKEN));
             return;
@@ -646,6 +675,19 @@ void IA_IAPI::getNewEdges(std::vector<std::pair< Address, EdgeTypeEnum> >& outEd
             }
             return;
         }
+        else if(cftHasUnresolvedReloc())
+        {
+            // Branch whose target bytes carry an unapplied relocation
+            // (unlinked object file): the real target is another section
+            // or an external symbol and is unknowable until link time.
+            // Treat it as a tail call to an unknown target.
+            parsing_printf("%s[%d]: tail call to unresolved relocation target at 0x%lx\n",
+                    FILE__, __LINE__, current);
+            outEdges.push_back(std::make_pair(Dyninst::ADDRESS_INVALID, INDIRECT));
+            tailCalls[INDIRECT] = true;
+            tailCalls[DIRECT] = true;
+            return;
+        }
         else if(isReturn(context, currBlk))
         {
             parsing_printf("%s[%d]: return candidate %s at 0x%lx\n", FILE__, __LINE__,
@@ -679,6 +721,27 @@ void IA_IAPI::getNewEdges(std::vector<std::pair< Address, EdgeTypeEnum> >& outEd
         else
         {
             parsing_printf("... indirect jump at 0x%lx\n", current);
+            // AMDGPU: an indirect s_setpc_b64 whose target is a getpc-computed address (the
+            // relocation veneer / tail-call idiom) is resolvable by the SAME backward slice we
+            // already run for s_swappc CALLS (resolveDynamicCallTarget -> ResolveCallTargetBySlicing).
+            // The generic jump-table analysis below only handles memory-read tables, so it can't see
+            // a PC-relative computed target and would sink the edge to ADDRESS_INVALID. Try the slice
+            // first; on a resolved constant, emit a DIRECT edge so the CFG follows the branch.
+            {
+                Architecture a = _isrc->getArch();
+                bool isAmdgpu = (a == Arch_amdgpu_gfx908 || a == Arch_amdgpu_gfx90a ||
+                                 a == Arch_amdgpu_gfx940 || a == Arch_amdgpu_gfx950);
+                if (isAmdgpu) {
+                    bool sliceOk = false; Address sliceTgt = 0;
+                    boost::tie(sliceOk, sliceTgt) = resolveDynamicCallTarget(context, currBlk);
+                    if (sliceOk && _isrc->isValidAddress(sliceTgt)) {
+                        parsing_printf("%s[%d]: indirect s_setpc at 0x%lx resolved by slicing to %lx\n",
+                                FILE__, __LINE__, current, sliceTgt);
+                        outEdges.push_back(std::make_pair(sliceTgt, DIRECT));
+                        return;
+                    }
+                }
+            }
             if( num_insns == 2 ) {
                 // Handle a pernicious indirect tail call idiom here
                 // What we've seen is mov (%rdi), %rax; jmp *%rax
@@ -689,7 +752,7 @@ void IA_IAPI::getNewEdges(std::vector<std::pair< Address, EdgeTypeEnum> >& outEd
                     parsing_printf("\tIndirect branch as 2nd insn of entry block, treating as tail call\n");
                     parsing_printf("%s[%d]: indirect tail call %s at 0x%lx\n", FILE__, __LINE__,
                             ci.format().c_str(), current);
-                    outEdges.push_back(std::make_pair((Address)-1,INDIRECT));
+                    outEdges.push_back(std::make_pair(Dyninst::ADDRESS_INVALID,INDIRECT));
                     tailCalls[INDIRECT]=true;
                     // Fix the cache, because we're dumb.
                     tailCalls[DIRECT]=true;
@@ -704,7 +767,7 @@ void IA_IAPI::getNewEdges(std::vector<std::pair< Address, EdgeTypeEnum> >& outEd
             if(isTailCall(context, INDIRECT, num_insns, knownTargets)) {
                 parsing_printf("%s[%d]: indirect tail call %s at 0x%lx\n", FILE__, __LINE__,
                         ci.format().c_str(), current);
-                outEdges.push_back(std::make_pair((Address)-1,INDIRECT));
+                outEdges.push_back(std::make_pair(Dyninst::ADDRESS_INVALID,INDIRECT));
                 tailCalls[INDIRECT] = true;
                 return;
             }
@@ -716,7 +779,7 @@ void IA_IAPI::getNewEdges(std::vector<std::pair< Address, EdgeTypeEnum> >& outEd
 
             parsing_printf("Parsed jump table\n");
             if(!successfullyParsedJumpTable || outEdges.empty()) {
-                outEdges.push_back(std::make_pair((Address)-1,INDIRECT));
+                outEdges.push_back(std::make_pair(Dyninst::ADDRESS_INVALID,INDIRECT));
                 parsing_printf("%s[%d]: unparsed jump table %s at 0x%lx in function %s UNINSTRUMENTABLE\n", FILE__, __LINE__,
                         ci.format().c_str(), current, context->name().c_str());
             }
@@ -741,7 +804,7 @@ void IA_IAPI::getNewEdges(std::vector<std::pair< Address, EdgeTypeEnum> >& outEd
             if(!successfullyParsedJumpTable || outEdges.empty()) {
                 parsing_printf("%s[%d]: BLR unparsed jump table %s at 0x%lx in function %s UNINSTRUMENTABLE\n", 
                         FILE__, __LINE__, ci.format().c_str(), current, context->name().c_str());
-                outEdges.push_back(std::make_pair((Address)-1,INDIRECT));
+                outEdges.push_back(std::make_pair(Dyninst::ADDRESS_INVALID,INDIRECT));
             }
         }
 
@@ -854,6 +917,19 @@ std::pair<bool, Address> IA_IAPI::getFallthrough() const
     return make_pair(true, curInsnIter->first + curInsnIter->second.size());
 }
 
+bool IA_IAPI::cftHasUnresolvedReloc() const
+{
+    Expression::Ptr cft = curInsn().getControlFlowTarget();
+    if(!cft) return false;
+    // A memory-indirect branch or call ('jmp *disp(,%reg,8)', 'call *disp(%rip)')
+    // reads its target at run time; a relocation in its bytes applies to the
+    // memory operand's displacement, not to a control-flow displacement, so
+    // it says nothing about the target and the instruction must keep its
+    // normal indirect handling (jump-table analysis, dynamic call).
+    if(boost::dynamic_pointer_cast<Dereference>(cft)) return false;
+    return _cr->hasUnresolvedRelocs(current, current + curInsn().size());
+}
+
 std::pair<bool, Address> IA_IAPI::getCFT() const
 {
     if(validCFT) return cachedCFT;
@@ -866,7 +942,19 @@ std::pair<bool, Address> IA_IAPI::getCFT() const
 
     Result actualTarget = callTarget->eval();
 
-    if(actualTarget.defined)
+    if(actualTarget.defined && cftHasUnresolvedReloc())
+    {
+        // The target bytes are placeholders awaiting link-time relocation
+        // (e.g. a call or tail call in a .o naming another section or an
+        // external symbol); the placeholder-derived constant is
+        // meaningless — typically the next instruction or one past the
+        // end of the section.
+        cachedCFT = std::make_pair(false, 0);
+        parsing_printf("REJECTED: CF target of '%s' at 0x%lx carries an unapplied relocation (placeholder target 0x%lx)\n",
+                curInsn().format().c_str(), current,
+                actualTarget.convert<Address>());
+    }
+    else if(actualTarget.defined)
     {
         cachedCFT = std::make_pair(true, actualTarget.convert<Address>());
         parsing_printf("SUCCESS (CFT=0x%lx)\n", cachedCFT.second);
@@ -896,8 +984,10 @@ bool IA_IAPI::isRelocatable(InstrumentableLevel lvl) const
         {
             bool valid; Address addr;
             boost::tie(valid, addr) = getCFT();
-            assert(valid);
-            if(!_isrc->isValidAddress(addr))
+            // An undefined CFT here means the target is unknown (e.g. an
+            // unapplied relocation in an unlinked object file), not that
+            // it is invalid; only validate targets we actually know.
+            if(valid && !_isrc->isValidAddress(addr))
             {
                 parsing_printf("... Call to 0x%lx is invalid (outside code or data)\n",
                         addr);
@@ -934,6 +1024,13 @@ bool IA_IAPI::parseJumpTable(Dyninst::ParseAPI::Function * currFunc,
 
 InstrumentableLevel IA_IAPI::getInstLevel(Function * context, unsigned int num_insns) const
 {
-    InstrumentableLevel ret = InstructionAdapter::getInstLevel(context, num_insns);
-    return ret;
+    // A branch whose displacement carries an unapplied relocation has no
+    // resolvable target and no jump table to parse: it is an ordinary
+    // direct branch to a target unknown until link time. The base class
+    // would otherwise expect a jump-table parsing attempt for a branch
+    // with an undefined target (a conditional one never sets that state).
+    bool valid; Address target;
+    boost::tie(valid, target) = getCFT();
+    if(isBranch() && !valid && cftHasUnresolvedReloc()) return NORMAL;
+    return InstructionAdapter::getInstLevel(context, num_insns);
 }

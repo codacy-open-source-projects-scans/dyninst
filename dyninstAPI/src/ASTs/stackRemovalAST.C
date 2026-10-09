@@ -1,5 +1,5 @@
 #include "ast_helpers.h"
-#include "RegisterConversion.h"
+#include "registerSpace/RegisterConversion.h"
 #include "stackRemovalAST.h"
 #include "arch-regs-x86.h"
 
@@ -31,8 +31,8 @@ bool stackRemovalAST::generateCode_phase2(codeGen &, Address &, Dyninst::Registe
 #else
 
 #include "Architecture.h"
-#include "codegen.h"
-#include "RegisterConversion.h"
+#include "codegen/codegen.h"
+#include "registerSpace/RegisterConversion.h"
 #include "registers/MachRegister.h"
 
 bool stackRemovalAST::generateCode_phase2(codeGen &gen, Address &,
